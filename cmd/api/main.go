@@ -48,6 +48,10 @@ func main() {
 	httpHandler := middleware.CORS(origins)(mux)
 
 	log.Printf("hanbin-back listening on %s", addr)
+	log.Println("registered routes:")
+	log.Println("  POST /api/v1/auth/register")
+	log.Println("  POST /api/v1/profiles")
+	log.Println("  GET|PATCH|DELETE /api/v1/profiles/{id}")
 	log.Printf("allowed origins: %v", origins)
 
 	if err := http.ListenAndServe(addr, httpHandler); err != nil {

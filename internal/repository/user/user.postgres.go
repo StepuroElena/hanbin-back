@@ -22,13 +22,13 @@ func NewPostgresUserRepository(db *sql.DB) domain.UserRepository {
 
 func (r *postgresUserRepository) Create(ctx context.Context, u *domain.User) (int64, error) {
 	const q = `
-		INSERT INTO users (email, password_hash, created_at, updated_at)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO users (name, email, password_hash, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`
 
 	var id int64
 	err := r.db.QueryRowContext(ctx, q,
-		u.Email(), u.PasswordHash(), u.CreatedAt(), u.UpdatedAt(),
+		u.Name(), u.Email(), u.PasswordHash(), u.CreatedAt(), u.UpdatedAt(),
 	).Scan(&id)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -40,13 +40,13 @@ func (r *postgresUserRepository) Create(ctx context.Context, u *domain.User) (in
 }
 
 func (r *postgresUserRepository) GetByID(ctx context.Context, id int64) (*domain.User, error) {
-	const q = `SELECT id, email, password_hash, created_at, updated_at FROM users WHERE id = $1`
+	const q = `SELECT id, name, email, password_hash, created_at, updated_at FROM users WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, q, id)
 	return scanUser(row)
 }
 
 func (r *postgresUserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	const q = `SELECT id, email, password_hash, created_at, updated_at FROM users WHERE email = $1`
+	const q = `SELECT id, name, email, password_hash, created_at, updated_at FROM users WHERE email = $1`
 	row := r.db.QueryRowContext(ctx, q, email)
 	return scanUser(row)
 }
@@ -56,16 +56,17 @@ func (r *postgresUserRepository) GetByEmail(ctx context.Context, email string) (
 func scanUser(row rowScanner) (*domain.User, error) {
 	var (
 		id           int64
+		name         string
 		email        string
 		passwordHash string
 		createdAt    time.Time
 		updatedAt    time.Time
 	)
-	if err := row.Scan(&id, &email, &passwordHash, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&id, &name, &email, &passwordHash, &createdAt, &updatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, domain.ErrUserNotFound
 		}
 		return nil, fmt.Errorf("userRepository.scan: %w", err)
 	}
-	return domain.ReconstituteUser(id, email, passwordHash, createdAt, updatedAt), nil
+	return domain.ReconstituteUser(id, name, email, passwordHash, createdAt, updatedAt), nil
 }

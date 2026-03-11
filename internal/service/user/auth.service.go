@@ -16,18 +16,20 @@ const (
 
 // RegisterInput — входные данные для регистрации.
 type RegisterInput struct {
+	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
 // RegisterOutput — ответ на успешную регистрацию.
-// Возвращаем только user_id — клиент использует его для создания профиля.
 type RegisterOutput struct {
-	UserID int64 `json:"user_id"`
+	UserID int64  `json:"user_id"`
+	Name   string `json:"name"`
+	Email  string `json:"email"`
 }
 
 // Register создаёт учётную запись пользователя.
-// Хэширует пароль, сохраняет в таблицу users, возвращает user_id.
+// Валидирует пароль, хэширует через bcrypt, сохраняет в таблицу users.
 func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterOutput, error) {
 	password := strings.TrimSpace(in.Password)
 	if password == "" {
@@ -42,7 +44,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterOutp
 		return nil, fmt.Errorf("service.Register: hash password: %w", err)
 	}
 
-	u, err := domain.NewUser(in.Email, string(hash))
+	u, err := domain.NewUser(in.Name, in.Email, string(hash))
 	if err != nil {
 		return nil, fmt.Errorf("service.Register: %w", err)
 	}
@@ -52,5 +54,9 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterOutp
 		return nil, fmt.Errorf("service.Register: %w", err)
 	}
 
-	return &RegisterOutput{UserID: id}, nil
+	return &RegisterOutput{
+		UserID: id,
+		Name:   u.Name(),
+		Email:  u.Email(),
+	}, nil
 }
