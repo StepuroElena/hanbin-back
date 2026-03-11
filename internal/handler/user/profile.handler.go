@@ -166,17 +166,36 @@ func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "profile not found")
+	case errors.Is(err, domain.ErrUserNotFound):
+		writeError(w, http.StatusNotFound, "user not found")
 	case errors.Is(err, domain.ErrEmailNotUnique):
 		writeError(w, http.StatusConflict, "email is already taken")
+	case errors.Is(err, domain.ErrProfileExists):
+		writeError(w, http.StatusConflict, "profile already exists for this user")
 	case errors.Is(err, domain.ErrNameRequired),
-		errors.Is(err, domain.ErrEmailRequired),
 		errors.Is(err, domain.ErrNameTooLong),
-		errors.Is(err, domain.ErrEmailTooLong),
-		errors.Is(err, domain.ErrEmailInvalid):
-		writeError(w, http.StatusBadRequest, err.Error())
+		errors.Is(err, domain.ErrUserIDRequired):
+		writeError(w, http.StatusBadRequest, unwrapMessage(err))
 	default:
 		writeError(w, http.StatusInternalServerError, "internal server error")
 	}
+}
+
+// isError проверяет, оборачивает ли err целевую ошибку (errors.Is через цепочку wrapping).
+func isError(err, target error) bool {
+	return err != nil && errors.Is(err, target)
+}
+
+// unwrapMessage возвращает текст последней ошибки в цепочке.
+func unwrapMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	var msg string
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		msg = e.Error()
+	}
+	return msg
 }
 
 // parseID вырезает числовой ID из пути вида /api/v1/profiles/42

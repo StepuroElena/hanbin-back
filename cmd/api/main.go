@@ -36,11 +36,13 @@ func main() {
 
 	// Dependency Injection: repo → service → handler
 	repo := userrepo.NewPostgresRepository(db)
-	service := usersvc.NewService(repo)
+	userRepo := userrepo.NewPostgresUserRepository(db)
+	service := usersvc.NewService(repo, userRepo)
 	handler := userhandler.NewHandler(service)
 
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
+	handler.RegisterAuthRoutes(mux)
 
 	// Оборачиваем mux в CORS-middleware
 	httpHandler := middleware.CORS(origins)(mux)
