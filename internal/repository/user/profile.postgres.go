@@ -10,26 +10,23 @@ import (
 	domain "github.com/hanbin/hanbin-back/internal/domain/user"
 )
 
-// postgresRepository — конкретная реализация domain.Repository для PostgreSQL.
-// Только этот файл знает о SQL; домен и сервис об этом ничего не знают.
 type postgresRepository struct {
 	db *sql.DB
 }
 
-// NewPostgresRepository создаёт репозиторий, подключённый к переданному db.
 func NewPostgresRepository(db *sql.DB) domain.Repository {
 	return &postgresRepository{db: db}
 }
 
 func (r *postgresRepository) Create(ctx context.Context, p *domain.Profile) (int64, error) {
 	const q = `
-		INSERT INTO profiles (name, email, created_at, updated_at)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO profiles (name, email, password_hash, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`
 
 	var id int64
 	err := r.db.QueryRowContext(ctx, q,
-		p.Name(), p.Email(), p.CreatedAt(), p.UpdatedAt(),
+		p.Name(), p.Email(), p.PasswordHash(), p.CreatedAt(), p.UpdatedAt(),
 	).Scan(&id)
 
 	if err != nil {
@@ -42,15 +39,13 @@ func (r *postgresRepository) Create(ctx context.Context, p *domain.Profile) (int
 }
 
 func (r *postgresRepository) GetByID(ctx context.Context, id int64) (*domain.Profile, error) {
-	const q = `SELECT id, name, email, created_at, updated_at FROM profiles WHERE id = $1`
-
+	const q = `SELECT id, name, email, password_hash, created_at, updated_at FROM profiles WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, q, id)
 	return scanProfile(row)
 }
 
 func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*domain.Profile, error) {
-	const q = `SELECT id, name, email, created_at, updated_at FROM profiles WHERE email = $1`
-
+	const q = `SELECT id, name, email, password_hash, created_at, updated_at FROM profiles WHERE email = $1`
 	row := r.db.QueryRowContext(ctx, q, email)
 	return scanProfile(row)
 }
@@ -71,6 +66,20 @@ func (r *postgresRepository) Update(ctx context.Context, p *domain.Profile) erro
 	return nil
 }
 
+func (r *postgresRepository) UpdatePassword(ctx context.Context, id int64, passwordHash string) error {
+	const q = `UPDATE profiles SET password_hash = $1, updated_at = $2 WHERE id = $3`
+
+	res, err := r.db.ExecContext(ctx, q, passwordHash, time.Now().UTC(), id)
+	if err != nil {
+		return fmt.Errorf("repository.UpdatePassword: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
 	const q = `DELETE FROM profiles WHERE id = $1`
 
@@ -85,7 +94,7 @@ func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ── Вспомогательные функции ───────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -93,34 +102,38 @@ type rowScanner interface {
 
 func scanProfile(row rowScanner) (*domain.Profile, error) {
 	var (
-		id        int64
-		name      string
-		email     string
-		createdAt time.Time
-		updatedAt time.Time
+		id           int64
+		name         string
+		email        string
+		passwordHash string
+		createdAt    time.Time
+		updatedAt    time.Time
 	)
-	if err := row.Scan(&id, &name, &email, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&id, &name, &email, &passwordHash, &createdAt, &updatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, domain.ErrNotFound
 		}
 		return nil, fmt.Errorf("repository.scan: %w", err)
 	}
-	return domain.Reconstitute(id, name, email, createdAt, updatedAt), nil
+	return domain.Reconstitute(id, name, email, passwordHash, createdAt, updatedAt), nil
 }
 
-// isUniqueViolation проверяет SQLSTATE 23505 (unique_violation в PostgreSQL).
 func isUniqueViolation(err error) bool {
-	return err != nil && len(err.Error()) > 0 &&
-		containsAny(err.Error(), "23505", "unique constraint", "duplicate key")
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return containsAny(s, "23505", "unique constraint", "duplicate key")
 }
 
 func containsAny(s string, subs ...string) bool {
 	for _, sub := range subs {
-		if len(s) >= len(sub) {
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
+		if len(sub) > len(s) {
+			continue
+		}
+		for i := 0; i <= len(s)-len(sub); i++ {
+			if s[i:i+len(sub)] == sub {
+				return true
 			}
 		}
 	}

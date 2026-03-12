@@ -7,33 +7,29 @@ import (
 	domain "github.com/hanbin/hanbin-back/internal/domain/user"
 )
 
-// Service реализует прикладные use-case'ы для работы с профилем пользователя.
-// Зависит только от интерфейса domain.Repository — конкретная БД не важна.
+// Service реализует use-case'ы для работы с профилем пользователя.
 type Service struct {
 	repo domain.Repository
 }
 
-// NewService — конструктор с внедрением зависимости (Dependency Injection).
 func NewService(repo domain.Repository) *Service {
 	return &Service{repo: repo}
 }
 
-// ── DTO ──────────────────────────────────────────────────────────────────────
+// ── DTO ───────────────────────────────────────────────────────────────────────
 
-// CreateInput — входные данные для создания профиля.
+// CreateInput оставлен для совместимости с /api/v1/profiles (прямое создание без пароля).
 type CreateInput struct {
-	Name  string
-	Email string
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
-// UpdateInput — данные для обновления профиля. Пустая строка = не менять.
 type UpdateInput struct {
-	Name  string
-	Email string
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
-// ProfileOutput — то, что возвращается наружу (handler / API).
-// Скрывает детали домена и позволяет независимо менять представление.
+// ProfileOutput — публичное представление профиля.
 type ProfileOutput struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
@@ -44,9 +40,11 @@ type ProfileOutput struct {
 
 // ── Use cases ─────────────────────────────────────────────────────────────────
 
-// Create создаёт новый профиль пользователя.
+// Create создаёт профиль без пароля (для прямого API без авторизации).
+// Используется только в /api/v1/profiles POST.
 func (s *Service) Create(ctx context.Context, in CreateInput) (*ProfileOutput, error) {
-	profile, err := domain.NewProfile(in.Name, in.Email)
+	// Пустой password_hash — только для legacy эндпоинта
+	profile, err := domain.NewProfile(in.Name, in.Email, "no-password")
 	if err != nil {
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
@@ -56,7 +54,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*ProfileOutput, e
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
 
-	out := toOutput(domain.Reconstitute(id, profile.Name(), profile.Email(), profile.CreatedAt(), profile.UpdatedAt()))
+	out := toOutput(domain.Reconstitute(id, profile.Name(), profile.Email(), "", profile.CreatedAt(), profile.UpdatedAt()))
 	return &out, nil
 }
 
@@ -104,7 +102,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ── Вспомогательные функции ───────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 func toOutput(p *domain.Profile) ProfileOutput {
 	return ProfileOutput{
