@@ -8,8 +8,9 @@ import (
 
 // Ошибки, специфичные для агрегата User.
 var (
-	ErrUserNotFound   = errors.New("user not found")
-	ErrUserEmailTaken = errors.New("email is already taken")
+	ErrUserNotFound      = errors.New("user not found")
+	ErrUserEmailTaken    = errors.New("email is already taken")
+	ErrInvalidCredentials = errors.New("invalid email or password")
 )
 
 // User — агрегат учётной записи (auth).

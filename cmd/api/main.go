@@ -50,6 +50,7 @@ func main() {
 	log.Printf("hanbin-back listening on %s", addr)
 	log.Println("registered routes:")
 	log.Println("  POST /api/v1/auth/register")
+	log.Println("  POST /api/v1/auth/login")
 	log.Println("  POST /api/v1/profiles")
 	log.Println("  GET|PATCH|DELETE /api/v1/profiles/{id}")
 	log.Printf("allowed origins: %v", origins)
