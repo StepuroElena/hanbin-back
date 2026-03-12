@@ -37,12 +37,15 @@ func main() {
 	// Dependency Injection: repo → service → handler
 	repo := userrepo.NewPostgresRepository(db)
 	userRepo := userrepo.NewPostgresUserRepository(db)
-	service := usersvc.NewService(repo, userRepo)
+	dramaRepo := userrepo.NewPostgresDramaRepository(db)
+	badgeRepo := userrepo.NewPostgresBadgeRepository(db)
+	service := usersvc.NewService(repo, userRepo, dramaRepo, badgeRepo)
 	handler := userhandler.NewHandler(service)
 
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 	handler.RegisterAuthRoutes(mux)
+	handler.RegisterMeRoutes(mux)
 
 	// Оборачиваем mux в CORS-middleware
 	httpHandler := middleware.CORS(origins)(mux)
@@ -53,6 +56,7 @@ func main() {
 	log.Println("  POST /api/v1/auth/login")
 	log.Println("  POST /api/v1/profiles")
 	log.Println("  GET|PATCH|DELETE /api/v1/profiles/{id}")
+	log.Println("  GET /api/v1/users/me")
 	log.Printf("allowed origins: %v", origins)
 
 	if err := http.ListenAndServe(addr, httpHandler); err != nil {
