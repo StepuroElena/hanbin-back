@@ -30,6 +30,7 @@ migrate-up:
 	psql "$(DSN)" -f migrations/001_create_profiles.up.sql
 	psql "$(DSN)" -f migrations/003_split_users_and_profiles.up.sql
 	psql "$(DSN)" -f migrations/004_add_name_to_users.up.sql
+	psql "$(DSN)" -f migrations/005_add_dramas_and_badges.up.sql
 
 ## migrate-down: откатить последнюю миграцию
 migrate-down:

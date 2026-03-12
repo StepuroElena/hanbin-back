@@ -8,15 +8,17 @@ import (
 )
 
 // Service реализует прикладные use-case'ы.
-// Зависит от двух репозиториев: профилей и пользователей.
+// Зависит от репозиториев: профилей, пользователей, дорам и бэйджей.
 type Service struct {
-	repo     domain.Repository
-	userRepo domain.UserRepository
+	repo       domain.Repository
+	userRepo   domain.UserRepository
+	dramaRepo  domain.DramaRepository
+	badgeRepo  domain.BadgeRepository
 }
 
 // NewService — конструктор с внедрением зависимостей.
-func NewService(repo domain.Repository, userRepo domain.UserRepository) *Service {
-	return &Service{repo: repo, userRepo: userRepo}
+func NewService(repo domain.Repository, userRepo domain.UserRepository, dramaRepo domain.DramaRepository, badgeRepo domain.BadgeRepository) *Service {
+	return &Service{repo: repo, userRepo: userRepo, dramaRepo: dramaRepo, badgeRepo: badgeRepo}
 }
 
 // ── DTO ──────────────────────────────────────────────────────────────────────
