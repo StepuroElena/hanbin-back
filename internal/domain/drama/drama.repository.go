@@ -9,4 +9,10 @@ type Repository interface {
 
 	// GetAllByProfileID возвращает все дорамы пользователя.
 	GetAllByProfileID(ctx context.Context, profileID int64) ([]*Drama, error)
+
+	// GetByID возвращает дораму по ID.
+	GetByID(ctx context.Context, id int64) (*Drama, error)
+
+	// UpdateArchived обновляет флаг is_archived у дорамы.
+	UpdateArchived(ctx context.Context, id int64, isArchived bool) error
 }

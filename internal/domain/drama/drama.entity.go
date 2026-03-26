@@ -19,20 +19,23 @@ const (
 )
 
 var (
-	ErrTitleRequired       = errors.New("title is required")
-	ErrWatchURLRequired    = errors.New("watch_url is required")
-	ErrGenreRequired       = errors.New("genre is required")
-	ErrCountryRequired     = errors.New("country is required")
-	ErrTitleTooLong        = errors.New("title must be 500 characters or fewer")
-	ErrGenreTooLong        = errors.New("genre must be 100 characters or fewer")
-	ErrCountryTooLong      = errors.New("country must be 100 characters or fewer")
-	ErrInvalidYear         = errors.New("release_year must be between 1900 and 2100")
-	ErrInvalidRating       = errors.New("rating must be between 0 and 10")
-	ErrInvalidReleaseTag   = errors.New("release_tag must be 'ongoing' or 'released'")
-	ErrInvalidTranslation  = errors.New("translation_tag must be 'translated' or 'translating'")
-	ErrInvalidWatchStatus  = errors.New("watch_status is invalid")
-	ErrNotFound            = errors.New("drama not found")
-	ErrProfileIDRequired   = errors.New("profile_id is required")
+	ErrTitleRequired          = errors.New("title is required")
+	ErrWatchURLRequired       = errors.New("watch_url is required")
+	ErrGenreRequired          = errors.New("genre is required")
+	ErrCountryRequired        = errors.New("country is required")
+	ErrTitleTooLong           = errors.New("title must be 500 characters or fewer")
+	ErrGenreTooLong           = errors.New("genre must be 100 characters or fewer")
+	ErrCountryTooLong         = errors.New("country must be 100 characters or fewer")
+	ErrInvalidYear            = errors.New("release_year must be between 1900 and 2100")
+	ErrInvalidRating          = errors.New("rating must be between 0 and 10")
+	ErrInvalidReleaseTag      = errors.New("release_tag must be 'ongoing' or 'released'")
+	ErrInvalidTranslation     = errors.New("translation_tag must be 'translated' or 'translating'")
+	ErrInvalidWatchStatus     = errors.New("watch_status is invalid")
+	ErrNotFound               = errors.New("drama not found")
+	ErrProfileIDRequired      = errors.New("profile_id is required")
+	ErrInvalidEpisodeDuration = errors.New("episode_duration_min must be greater than 0")
+	ErrInvalidSeasonNumber    = errors.New("season_number must be greater than 0")
+	ErrInvalidEpisodeCount    = errors.New("episode_count must be greater than 0")
 )
 
 // ── Enum-типы ─────────────────────────────────────────────────────────────────
@@ -55,8 +58,8 @@ func ParseReleaseTag(s string) (ReleaseTag, error) {
 type TranslationTag string
 
 const (
-	TranslationTagTranslated   TranslationTag = "translated"
-	TranslationTagTranslating  TranslationTag = "translating"
+	TranslationTagTranslated  TranslationTag = "translated"
+	TranslationTagTranslating TranslationTag = "translating"
 )
 
 func ParseTranslationTag(s string) (TranslationTag, error) {
@@ -84,23 +87,47 @@ func ParseWatchStatus(s string) (WatchStatus, error) {
 	return "", ErrInvalidWatchStatus
 }
 
+// ── Вложенные типы ────────────────────────────────────────────────────────────
+
+// Season описывает один сезон дорамы: номер и количество серий.
+type Season struct {
+	SeasonNumber int `json:"season_number"`
+	EpisodeCount int `json:"episode_count"`
+}
+
+// SeasonProgress хранит прогресс просмотра по одному сезону.
+type SeasonProgress struct {
+	SeasonNumber    int `json:"season_number"`
+	WatchedEpisodes int `json:"watched_episodes"`
+}
+
+// Progress — полный прогресс просмотра дорамы.
+type Progress struct {
+	CurrentEpisode int              `json:"current_episode"`
+	Seasons        []SeasonProgress `json:"seasons"`
+}
+
 // ── Агрегат ───────────────────────────────────────────────────────────────────
 
 // Drama — агрегат дорамы. Все поля приватны, доступ через конструктор и геттеры.
 type Drama struct {
-	id             int64
-	profileID      int64
-	title          string
-	watchURL       string
-	releaseYear    int
-	releaseTag     ReleaseTag
-	translationTag TranslationTag
-	genre          string
-	rating         *float64 // nil = не указан
-	watchStatus    WatchStatus
-	country        string
-	createdAt      time.Time
-	updatedAt      time.Time
+	id                  int64
+	profileID           int64
+	title               string
+	watchURL            string
+	releaseYear         int
+	releaseTag          ReleaseTag
+	translationTag      TranslationTag
+	genre               string
+	rating              *float64 // nil = не указан
+	watchStatus         WatchStatus
+	country             string
+	isArchived          bool
+	episodeDurationMin  *int    // nil = не указан
+	seasons             []Season
+	progress            Progress
+	createdAt           time.Time
+	updatedAt           time.Time
 }
 
 // NewDrama создаёт валидный агрегат Drama.
@@ -120,7 +147,11 @@ func NewDrama(
 		return nil, ErrProfileIDRequired
 	}
 
-	d := &Drama{profileID: profileID}
+	d := &Drama{
+		profileID: profileID,
+		seasons:   []Season{},
+		progress:  Progress{CurrentEpisode: 0, Seasons: []SeasonProgress{}},
+	}
 
 	if err := d.setTitle(title); err != nil {
 		return nil, err
@@ -167,40 +198,58 @@ func Reconstitute(
 	rating *float64,
 	watchStatus WatchStatus,
 	country string,
+	isArchived bool,
+	episodeDurationMin *int,
+	seasons []Season,
+	progress Progress,
 	createdAt, updatedAt time.Time,
 ) *Drama {
+	if seasons == nil {
+		seasons = []Season{}
+	}
+	if progress.Seasons == nil {
+		progress.Seasons = []SeasonProgress{}
+	}
 	return &Drama{
-		id:             id,
-		profileID:      profileID,
-		title:          title,
-		watchURL:       watchURL,
-		releaseYear:    releaseYear,
-		releaseTag:     releaseTag,
-		translationTag: translationTag,
-		genre:          genre,
-		rating:         rating,
-		watchStatus:    watchStatus,
-		country:        country,
-		createdAt:      createdAt,
-		updatedAt:      updatedAt,
+		id:                 id,
+		profileID:          profileID,
+		title:              title,
+		watchURL:           watchURL,
+		releaseYear:        releaseYear,
+		releaseTag:         releaseTag,
+		translationTag:     translationTag,
+		genre:              genre,
+		rating:             rating,
+		watchStatus:        watchStatus,
+		country:            country,
+		isArchived:         isArchived,
+		episodeDurationMin: episodeDurationMin,
+		seasons:            seasons,
+		progress:           progress,
+		createdAt:          createdAt,
+		updatedAt:          updatedAt,
 	}
 }
 
 // ── Геттеры ───────────────────────────────────────────────────────────────────
 
-func (d *Drama) ID() int64                   { return d.id }
-func (d *Drama) ProfileID() int64            { return d.profileID }
-func (d *Drama) Title() string               { return d.title }
-func (d *Drama) WatchURL() string            { return d.watchURL }
-func (d *Drama) ReleaseYear() int            { return d.releaseYear }
-func (d *Drama) ReleaseTag() ReleaseTag      { return d.releaseTag }
+func (d *Drama) ID() int64                      { return d.id }
+func (d *Drama) ProfileID() int64               { return d.profileID }
+func (d *Drama) Title() string                  { return d.title }
+func (d *Drama) WatchURL() string               { return d.watchURL }
+func (d *Drama) ReleaseYear() int               { return d.releaseYear }
+func (d *Drama) ReleaseTag() ReleaseTag         { return d.releaseTag }
 func (d *Drama) TranslationTag() TranslationTag { return d.translationTag }
-func (d *Drama) Genre() string               { return d.genre }
-func (d *Drama) Rating() *float64            { return d.rating }
-func (d *Drama) WatchStatus() WatchStatus    { return d.watchStatus }
-func (d *Drama) Country() string             { return d.country }
-func (d *Drama) CreatedAt() time.Time        { return d.createdAt }
-func (d *Drama) UpdatedAt() time.Time        { return d.updatedAt }
+func (d *Drama) Genre() string                  { return d.genre }
+func (d *Drama) Rating() *float64               { return d.rating }
+func (d *Drama) WatchStatus() WatchStatus       { return d.watchStatus }
+func (d *Drama) Country() string                { return d.country }
+func (d *Drama) IsArchived() bool               { return d.isArchived }
+func (d *Drama) EpisodeDurationMin() *int       { return d.episodeDurationMin }
+func (d *Drama) Seasons() []Season              { return d.seasons }
+func (d *Drama) Progress() Progress             { return d.progress }
+func (d *Drama) CreatedAt() time.Time           { return d.createdAt }
+func (d *Drama) UpdatedAt() time.Time           { return d.updatedAt }
 
 // ── Приватные сеттеры ─────────────────────────────────────────────────────────
 

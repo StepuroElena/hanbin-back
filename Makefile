@@ -28,9 +28,11 @@ migrate-up:
 	psql "$(DB_DSN)" -f migrations/001_create_profiles.up.sql
 	psql "$(DB_DSN)" -f migrations/002_create_dramas.up.sql
 	psql "$(DB_DSN)" -f migrations/003_add_auth_to_profiles.up.sql
+	psql "$(DB_DSN)" -f migrations/004_add_archive_fields_to_dramas.up.sql
 
 ## migrate-down: откатить все миграции
 migrate-down:
+	psql "$(DB_DSN)" -f migrations/004_add_archive_fields_to_dramas.down.sql
 	psql "$(DB_DSN)" -f migrations/003_add_auth_to_profiles.down.sql
 	psql "$(DB_DSN)" -f migrations/002_create_dramas.down.sql
 	psql "$(DB_DSN)" -f migrations/001_create_profiles.down.sql
@@ -50,3 +52,11 @@ migrate-auth-up:
 ## migrate-auth-down: убрать auth-поля
 migrate-auth-down:
 	psql "$(DB_DSN)" -f migrations/003_add_auth_to_profiles.down.sql
+
+## migrate-archive-up: добавить поля архива/сезонов/прогресса
+migrate-archive-up:
+	psql "$(DB_DSN)" -f migrations/004_add_archive_fields_to_dramas.up.sql
+
+## migrate-archive-down: откатить поля архива/сезонов/прогресса
+migrate-archive-down:
+	psql "$(DB_DSN)" -f migrations/004_add_archive_fields_to_dramas.down.sql

@@ -18,6 +18,24 @@ func NewService(repo domain.Repository) *Service {
 
 // ── DTO ───────────────────────────────────────────────────────────────────────
 
+// SeasonOutput — один сезон дорамы в ответе API.
+type SeasonOutput struct {
+	SeasonNumber int `json:"season_number"`
+	EpisodeCount int `json:"episode_count"`
+}
+
+// SeasonProgressOutput — прогресс просмотра по одному сезону в ответе API.
+type SeasonProgressOutput struct {
+	SeasonNumber    int `json:"season_number"`
+	WatchedEpisodes int `json:"watched_episodes"`
+}
+
+// ProgressOutput — полный прогресс просмотра в ответе API.
+type ProgressOutput struct {
+	CurrentEpisode int                    `json:"current_episode"`
+	Seasons        []SeasonProgressOutput `json:"seasons"`
+}
+
 // CreateInput — тело запроса на добавление дорамы.
 type CreateInput struct {
 	Title          string   `json:"title"`
@@ -30,21 +48,30 @@ type CreateInput struct {
 	Country        string   `json:"country"`
 }
 
+// ArchiveInput — тело запроса на изменение статуса архива.
+type ArchiveInput struct {
+	IsArchived bool `json:"is_archived"`
+}
+
 // DramaOutput — то, что возвращается клиенту.
 type DramaOutput struct {
-	ID             int64    `json:"id"`
-	ProfileID      int64    `json:"profile_id"`
-	Title          string   `json:"title"`
-	WatchURL       string   `json:"watch_url"`
-	ReleaseYear    int      `json:"release_year"`
-	ReleaseTag     string   `json:"release_tag"`
-	TranslationTag string   `json:"translation_tag"`
-	Genre          string   `json:"genre"`
-	Rating         *float64 `json:"rating"`
-	WatchStatus    string   `json:"watch_status"`
-	Country        string   `json:"country"`
-	CreatedAt      string   `json:"created_at"`
-	UpdatedAt      string   `json:"updated_at"`
+	ID                 int64          `json:"id"`
+	ProfileID          int64          `json:"profile_id"`
+	Title              string         `json:"title"`
+	WatchURL           string         `json:"watch_url"`
+	ReleaseYear        int            `json:"release_year"`
+	ReleaseTag         string         `json:"release_tag"`
+	TranslationTag     string         `json:"translation_tag"`
+	Genre              string         `json:"genre"`
+	Rating             *float64       `json:"rating"`
+	WatchStatus        string         `json:"watch_status"`
+	Country            string         `json:"country"`
+	IsArchived         bool           `json:"is_archived"`
+	EpisodeDurationMin *int           `json:"episode_duration_min"`
+	Seasons            []SeasonOutput `json:"seasons"`
+	Progress           ProgressOutput `json:"progress"`
+	CreatedAt          string         `json:"created_at"`
+	UpdatedAt          string         `json:"updated_at"`
 }
 
 // ── Use cases ─────────────────────────────────────────────────────────────────
@@ -88,6 +115,8 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 		d.ReleaseTag(), d.TranslationTag(),
 		d.Genre(), d.Rating(),
 		d.WatchStatus(), d.Country(),
+		d.IsArchived(), d.EpisodeDurationMin(),
+		d.Seasons(), d.Progress(),
 		d.CreatedAt(), d.UpdatedAt(),
 	))
 	return &out, nil
@@ -107,9 +136,50 @@ func (s *Service) GetAllByProfileID(ctx context.Context, profileID int64) ([]Dra
 	return out, nil
 }
 
+// SetArchived устанавливает флаг is_archived у дорамы.
+// Проверяет что дорама принадлежит profileID из токена.
+func (s *Service) SetArchived(ctx context.Context, profileID, dramaID int64, isArchived bool) (*DramaOutput, error) {
+	d, err := s.repo.GetByID(ctx, dramaID)
+	if err != nil {
+		return nil, fmt.Errorf("service.SetArchived: %w", err)
+	}
+	if d.ProfileID() != profileID {
+		return nil, fmt.Errorf("service.SetArchived: %w", domain.ErrNotFound)
+	}
+
+	if err := s.repo.UpdateArchived(ctx, dramaID, isArchived); err != nil {
+		return nil, fmt.Errorf("service.SetArchived: %w", err)
+	}
+
+	// Перечитываем актуальное состояние из БД
+	updated, err := s.repo.GetByID(ctx, dramaID)
+	if err != nil {
+		return nil, fmt.Errorf("service.SetArchived refetch: %w", err)
+	}
+	out := toOutput(updated)
+	return &out, nil
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func toOutput(d *domain.Drama) DramaOutput {
+	seasons := make([]SeasonOutput, 0, len(d.Seasons()))
+	for _, s := range d.Seasons() {
+		seasons = append(seasons, SeasonOutput{
+			SeasonNumber: s.SeasonNumber,
+			EpisodeCount: s.EpisodeCount,
+		})
+	}
+
+	prog := d.Progress()
+	progressSeasons := make([]SeasonProgressOutput, 0, len(prog.Seasons))
+	for _, sp := range prog.Seasons {
+		progressSeasons = append(progressSeasons, SeasonProgressOutput{
+			SeasonNumber:    sp.SeasonNumber,
+			WatchedEpisodes: sp.WatchedEpisodes,
+		})
+	}
+
 	return DramaOutput{
 		ID:             d.ID(),
 		ProfileID:      d.ProfileID(),
@@ -122,7 +192,14 @@ func toOutput(d *domain.Drama) DramaOutput {
 		Rating:         d.Rating(),
 		WatchStatus:    string(d.WatchStatus()),
 		Country:        d.Country(),
-		CreatedAt:      d.CreatedAt().Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:      d.UpdatedAt().Format("2006-01-02T15:04:05Z"),
+		IsArchived:     d.IsArchived(),
+		EpisodeDurationMin: d.EpisodeDurationMin(),
+		Seasons:        seasons,
+		Progress: ProgressOutput{
+			CurrentEpisode: prog.CurrentEpisode,
+			Seasons:        progressSeasons,
+		},
+		CreatedAt: d.CreatedAt().Format("2006-01-02T15:04:05Z"),
+		UpdatedAt: d.UpdatedAt().Format("2006-01-02T15:04:05Z"),
 	}
 }

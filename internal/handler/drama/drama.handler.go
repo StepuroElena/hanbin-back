@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
 	domain "github.com/hanbin/hanbin-back/internal/domain/drama"
 	"github.com/hanbin/hanbin-back/internal/middleware"
@@ -21,9 +23,11 @@ func NewHandler(service *svc.Service) *Handler {
 
 // RegisterRoutes регистрирует маршруты:
 //
-//	POST /api/v1/dramas  — добавить дораму (требует JWT)
+//	POST   /api/v1/dramas             — добавить дораму (требует JWT)
+//	PATCH  /api/v1/dramas/{id}/archive — установить/снять архив (требует JWT)
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/v1/dramas", middleware.Auth(http.HandlerFunc(h.handleCollection)))
+	mux.Handle("/api/v1/dramas/", middleware.Auth(http.HandlerFunc(h.handleItem)))
 }
 
 // handleCollection — диспетчер для /api/v1/dramas
@@ -34,6 +38,29 @@ func (h *Handler) handleCollection(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+// handleItem — диспетчер для /api/v1/dramas/{id}/...
+func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
+	// Ожидаем путь вида /api/v1/dramas/{id}/archive
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/dramas/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+
+	if len(parts) == 2 && parts[1] == "archive" {
+		id, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil || id <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid drama id")
+			return
+		}
+		if r.Method != http.MethodPatch {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		h.SetArchived(w, r, id)
+		return
+	}
+
+	writeError(w, http.StatusNotFound, "not found")
 }
 
 // Create godoc
@@ -63,6 +90,36 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
+}
+
+// SetArchived godoc
+//
+//	PATCH /api/v1/dramas/{id}/archive
+//	Header: Authorization: Bearer <token>
+//	Body: {"is_archived": true}
+//	200 OK  → DramaOutput (JSON)
+//	400 Bad Request
+//	401 Unauthorized
+//	404 Not Found
+func (h *Handler) SetArchived(w http.ResponseWriter, r *http.Request, dramaID int64) {
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var body svc.ArchiveInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	out, err := h.service.SetArchived(r.Context(), profileID, dramaID, body.IsArchived)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
