@@ -42,11 +42,11 @@ func (h *Handler) handleCollection(w http.ResponseWriter, r *http.Request) {
 
 // handleItem — диспетчер для /api/v1/dramas/{id}/...
 func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
-	// Ожидаем путь вида /api/v1/dramas/{id}/archive
+	// Ожидаем путь вида /api/v1/dramas/{id}/archive или /api/v1/dramas/{id}/unarchive
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/dramas/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 
-	if len(parts) == 2 && parts[1] == "archive" {
+	if len(parts) == 2 && (parts[1] == "archive" || parts[1] == "unarchive") {
 		id, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil || id <= 0 {
 			writeError(w, http.StatusBadRequest, "invalid drama id")
@@ -56,7 +56,9 @@ func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
-		h.SetArchived(w, r, id)
+		// Флаг определяется из пути: /archive → true, /unarchive → false
+		isArchived := parts[1] == "archive"
+		h.SetArchived(w, r, id, isArchived)
 		return
 	}
 
@@ -94,27 +96,20 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 // SetArchived godoc
 //
-//	PATCH /api/v1/dramas/{id}/archive
+//	PATCH /api/v1/dramas/{id}/archive   — архивировать дораму
+//	PATCH /api/v1/dramas/{id}/unarchive — вернуть из архива
 //	Header: Authorization: Bearer <token>
-//	Body: {"is_archived": true}
 //	200 OK  → DramaOutput (JSON)
-//	400 Bad Request
 //	401 Unauthorized
 //	404 Not Found
-func (h *Handler) SetArchived(w http.ResponseWriter, r *http.Request, dramaID int64) {
+func (h *Handler) SetArchived(w http.ResponseWriter, r *http.Request, dramaID int64, isArchived bool) {
 	profileID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	var body svc.ArchiveInput
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body")
-		return
-	}
-
-	out, err := h.service.SetArchived(r.Context(), profileID, dramaID, body.IsArchived)
+	out, err := h.service.SetArchived(r.Context(), profileID, dramaID, isArchived)
 	if err != nil {
 		writeServiceError(w, err)
 		return
