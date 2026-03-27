@@ -23,8 +23,9 @@ func NewHandler(service *svc.Service) *Handler {
 
 // RegisterRoutes регистрирует маршруты:
 //
-//	POST   /api/v1/dramas             — добавить дораму (требует JWT)
-//	PATCH  /api/v1/dramas/{id}/archive — установить/снять архив (требует JWT)
+//	POST   /api/v1/dramas               — добавить дораму (требует JWT)
+//	PATCH  /api/v1/dramas/{id}/archive   — установить/снять архив (требует JWT)
+//	DELETE /api/v1/dramas/{id}           — удалить дораму (is_archived=true, требует JWT)
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/v1/dramas", middleware.Auth(http.HandlerFunc(h.handleCollection)))
 	mux.Handle("/api/v1/dramas/", middleware.Auth(http.HandlerFunc(h.handleItem)))
@@ -42,10 +43,25 @@ func (h *Handler) handleCollection(w http.ResponseWriter, r *http.Request) {
 
 // handleItem — диспетчер для /api/v1/dramas/{id}/...
 func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
-	// Ожидаем путь вида /api/v1/dramas/{id}/archive или /api/v1/dramas/{id}/unarchive
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/dramas/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 
+	// DELETE /api/v1/dramas/{id}
+	if len(parts) == 1 {
+		id, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil || id <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid drama id")
+			return
+		}
+		if r.Method != http.MethodDelete {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		h.Delete(w, r, id)
+		return
+	}
+
+	// PATCH /api/v1/dramas/{id}/archive или /unarchive
 	if len(parts) == 2 && (parts[1] == "archive" || parts[1] == "unarchive") {
 		id, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil || id <= 0 {
@@ -56,7 +72,6 @@ func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
-		// Флаг определяется из пути: /archive → true, /unarchive → false
 		isArchived := parts[1] == "archive"
 		h.SetArchived(w, r, id, isArchived)
 		return
@@ -92,6 +107,28 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
+}
+
+// Delete godoc
+//
+//	DELETE /api/v1/dramas/{id}
+//	Header: Authorization: Bearer <token>
+//	204 No Content  — дорама удалена
+//	400 Bad Request — дорама не архивирована
+//	401 Unauthorized
+//	404 Not Found
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request, dramaID int64) {
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), profileID, dramaID); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // SetArchived godoc
@@ -148,7 +185,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, domain.ErrInvalidRating),
 		errors.Is(err, domain.ErrInvalidReleaseTag),
 		errors.Is(err, domain.ErrInvalidTranslation),
-		errors.Is(err, domain.ErrProfileIDRequired):
+		errors.Is(err, domain.ErrProfileIDRequired),
+		errors.Is(err, domain.ErrNotArchived):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "internal server error")

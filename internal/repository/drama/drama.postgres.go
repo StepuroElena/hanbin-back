@@ -135,7 +135,24 @@ func (r *postgresRepository) UpdateArchived(ctx context.Context, id int64, isArc
 	return nil
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
+	const q = `DELETE FROM dramas WHERE id = $1`
+
+	res, err := r.db.ExecContext(ctx, q, id)
+	if err != nil {
+		return fmt.Errorf("drama repository.Delete: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("drama repository.Delete rows affected: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────────────────
 
 type rowScanner interface {
 	Scan(dest ...any) error

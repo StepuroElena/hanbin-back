@@ -32,6 +32,7 @@ var (
 	ErrInvalidTranslation     = errors.New("translation_tag must be 'translated' or 'translating'")
 	ErrInvalidWatchStatus     = errors.New("watch_status is invalid")
 	ErrNotFound               = errors.New("drama not found")
+	ErrNotArchived            = errors.New("drama must be archived before deletion")
 	ErrProfileIDRequired      = errors.New("profile_id is required")
 	ErrInvalidEpisodeDuration = errors.New("episode_duration_min must be greater than 0")
 	ErrInvalidSeasonNumber    = errors.New("season_number must be greater than 0")

@@ -160,6 +160,25 @@ func (s *Service) SetArchived(ctx context.Context, profileID, dramaID int64, isA
 	return &out, nil
 }
 
+// Delete проверяет, что дорама архивирована, и удаляет её из БД.
+// Если is_archived = false — возвращает domain.ErrNotArchived (400).
+func (s *Service) Delete(ctx context.Context, profileID, dramaID int64) error {
+	d, err := s.repo.GetByID(ctx, dramaID)
+	if err != nil {
+		return fmt.Errorf("service.Delete: %w", err)
+	}
+	if d.ProfileID() != profileID {
+		return fmt.Errorf("service.Delete: %w", domain.ErrNotFound)
+	}
+	if !d.IsArchived() {
+		return fmt.Errorf("service.Delete: %w", domain.ErrNotArchived)
+	}
+	if err := s.repo.Delete(ctx, dramaID); err != nil {
+		return fmt.Errorf("service.Delete: %w", err)
+	}
+	return nil
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func toOutput(d *domain.Drama) DramaOutput {

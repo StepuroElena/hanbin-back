@@ -15,4 +15,7 @@ type Repository interface {
 
 	// UpdateArchived обновляет флаг is_archived у дорамы.
 	UpdateArchived(ctx context.Context, id int64, isArchived bool) error
+
+	// Delete удаляет дораму из БД по ID.
+	Delete(ctx context.Context, id int64) error
 }
