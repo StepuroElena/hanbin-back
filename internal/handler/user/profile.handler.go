@@ -171,18 +171,21 @@ func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "profile not found")
+	case errors.Is(err, domain.ErrUserNotFound):
+		writeError(w, http.StatusNotFound, "user not found")
 	case errors.Is(err, domain.ErrEmailNotUnique):
 		writeError(w, http.StatusConflict, "email is already taken")
+	case errors.Is(err, domain.ErrProfileExists):
+		writeError(w, http.StatusConflict, "profile already exists for this user")
 	case errors.Is(err, domain.ErrNameRequired),
-		errors.Is(err, domain.ErrEmailRequired),
 		errors.Is(err, domain.ErrNameTooLong),
-		errors.Is(err, domain.ErrEmailTooLong),
-		errors.Is(err, domain.ErrEmailInvalid):
-		writeError(w, http.StatusBadRequest, err.Error())
+		errors.Is(err, domain.ErrUserIDRequired):
+		writeError(w, http.StatusBadRequest, unwrapMessage(err))
 	default:
 		writeError(w, http.StatusInternalServerError, "internal server error")
 	}
 }
+
 
 func parseID(urlPath, prefix string) (int64, error) {
 	raw := strings.TrimPrefix(urlPath, prefix)

@@ -36,21 +36,16 @@ func main() {
 	}
 	log.Println("connected to database")
 
-	// ── Dependency Injection ──────────────────────────────────────────────────
-
+// ── Dependency Injection ──────────────────────────────────────────────────
 	userRepo := userrepo.NewPostgresRepository(db)
 	dramaRepo := dramarepo.NewPostgresRepository(db)
-
 	userService := usersvc.NewService(userRepo)
 	dramaService := dramasvc.NewService(dramaRepo)
 	authService := authsvc.NewService(userRepo)
-
 	userHandler := userhandler.NewHandler(userService, dramaService)
 	dramaHandler := dramahandler.NewHandler(dramaService)
 	authHandler := authhandler.NewHandler(authService)
-
 	// ── Routing ───────────────────────────────────────────────────────────────
-
 	mux := http.NewServeMux()
 	authHandler.RegisterRoutes(mux)   // POST /api/v1/auth/register, /api/v1/auth/login
 	userHandler.RegisterRoutes(mux)   // GET  /api/v1/users/me, /api/v1/profiles/...
@@ -59,6 +54,12 @@ func main() {
 	httpHandler := middleware.CORS(origins)(mux)
 
 	log.Printf("hanbin-back listening on %s", addr)
+	log.Println("registered routes:")
+	log.Println("  POST /api/v1/auth/register")
+	log.Println("  POST /api/v1/auth/login")
+	log.Println("  POST /api/v1/profiles")
+	log.Println("  GET|PATCH|DELETE /api/v1/profiles/{id}")
+	log.Println("  GET /api/v1/users/me")
 	log.Printf("allowed origins: %v", origins)
 
 	if err := http.ListenAndServe(addr, httpHandler); err != nil {
