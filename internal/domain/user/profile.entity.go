@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	MaxNameLength  = 255
-	MaxEmailLength = 255
+	MaxNameLength     = 255
+	MaxEmailLength    = 255
+	MinPasswordLength = 6
 )
 
 // Ошибки домена — используются во всех слоях приложения.
@@ -16,36 +17,37 @@ var (
 	ErrNameRequired     = errors.New("name is required")
 	ErrEmailRequired    = errors.New("email is required")
 	ErrPasswordRequired = errors.New("password is required")
-	ErrPasswordTooShort = errors.New("password must be at least 8 characters")
+ErrPasswordTooShort = errors.New("password must be at least 8 characters")
 	ErrNameTooLong      = errors.New("name must be 255 characters or fewer")
 	ErrEmailTooLong     = errors.New("email must be 255 characters or fewer")
 	ErrEmailInvalid     = errors.New("email format is invalid")
 	ErrEmailNotUnique   = errors.New("email is already taken")
-	ErrNotFound         = errors.New("profile not found")
-	ErrUserIDRequired   = errors.New("user_id is required")
-	ErrProfileExists    = errors.New("profile already exists for this user")
+ErrNotFound         = errors.New("user not found")
 )
-
-// Profile — агрегат публичного профиля пользователя.
-// Привязан к User через userID (FK → users.id).
-// Не хранит email и пароль — это зона ответственности User.
+// Profile — агрегат пользователя.
 type Profile struct {
-	id        int64
-	userID    int64
-	name      string
-	createdAt time.Time
-	updatedAt time.Time
+	id           int64
+	name         string
+	email        string
+	passwordHash string
+	createdAt    time.Time
+	updatedAt    time.Time
 }
-
-// NewProfile создаёт валидный Profile для существующего пользователя.
-func NewProfile(userID int64, name string) (*Profile, error) {
-	if userID <= 0 {
-		return nil, ErrUserIDRequired
+// NewProfile создаёт валидный Profile без сохранения в БД.
+// passwordHash — уже захешированный пароль (bcrypt), передаётся из сервиса.
+func NewProfile(name, email, passwordHash string) (*Profile, error) {
+	p := &Profile{}
+	if err := p.SetName(name); err != nil {
+		return nil, err
 	}
 	p := &Profile{userID: userID}
 	if err := p.SetName(name); err != nil {
 		return nil, err
 	}
+if strings.TrimSpace(passwordHash) == "" {
+		return nil, ErrPasswordRequired
+	}
+	p.passwordHash = passwordHash
 	now := time.Now().UTC()
 	p.createdAt = now
 	p.updatedAt = now
@@ -53,25 +55,25 @@ func NewProfile(userID int64, name string) (*Profile, error) {
 }
 
 // Reconstitute восстанавливает Profile из БД без валидации.
-func Reconstitute(id, userID int64, name string, createdAt, updatedAt time.Time) *Profile {
+func Reconstitute(id int64, name, email, passwordHash string, createdAt, updatedAt time.Time) *Profile {
 	return &Profile{
-		id:        id,
-		userID:    userID,
-		name:      name,
-		createdAt: createdAt,
-		updatedAt: updatedAt,
+		id:           id,
+		name:         name,
+		email:        email,
+		passwordHash: passwordHash,
+		createdAt:    createdAt,
+		updatedAt:    updatedAt,
 	}
 }
-
 // ── Геттеры ──────────────────────────────────────────────────────────────────
-
-func (p *Profile) ID() int64          { return p.id }
-func (p *Profile) UserID() int64      { return p.userID }
-func (p *Profile) Name() string       { return p.name }
+func (p *Profile) ID() int64            { return p.id }
+func (p *Profile) Name() string         { return p.name }
+func (p *Profile) Email() string        { return p.email }
+func (p *Profile) PasswordHash() string { return p.passwordHash }
 func (p *Profile) CreatedAt() time.Time { return p.createdAt }
 func (p *Profile) UpdatedAt() time.Time { return p.updatedAt }
 
-// ── Сеттеры с валидацией ─────────────────────────────────────────────────────
+// ── Сеттеры ───────────────────────────────────────────────────────────────────
 
 func (p *Profile) SetName(name string) error {
 	name = strings.TrimSpace(name)
@@ -86,6 +88,21 @@ func (p *Profile) SetName(name string) error {
 	return nil
 }
 
+func (p *Profile) SetEmail(email string) error {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" {
+		return ErrEmailRequired
+	}
+	if len(email) > MaxEmailLength {
+		return ErrEmailTooLong
+	}
+	if !isValidEmail(email) {
+		return ErrEmailInvalid
+	}
+	p.email = email
+	p.updatedAt = time.Now().UTC()
+	return nil
+}
 // ── Вспомогательные функции ───────────────────────────────────────────────────
 
 func isValidEmail(email string) bool {

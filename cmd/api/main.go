@@ -9,18 +9,20 @@ import (
 
 	_ "github.com/lib/pq"
 
+	authhandler "github.com/hanbin/hanbin-back/internal/handler/auth"
+	dramahandler "github.com/hanbin/hanbin-back/internal/handler/drama"
 	userhandler "github.com/hanbin/hanbin-back/internal/handler/user"
 	"github.com/hanbin/hanbin-back/internal/middleware"
+	dramarepo "github.com/hanbin/hanbin-back/internal/repository/drama"
 	userrepo "github.com/hanbin/hanbin-back/internal/repository/user"
+	authsvc "github.com/hanbin/hanbin-back/internal/service/auth"
+	dramasvc "github.com/hanbin/hanbin-back/internal/service/drama"
 	usersvc "github.com/hanbin/hanbin-back/internal/service/user"
 )
 
 func main() {
 	dsn := getenv("DATABASE_URL", "host=localhost port=5432 user=elenastepuro dbname=hanbin sslmode=disable")
 	addr := getenv("ADDR", ":8080")
-
-	// Список origins, которым разрешено обращаться к API.
-	// Задаётся через ALLOWED_ORIGINS="http://localhost:3000,http://localhost:5500"
 	origins := strings.Split(getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5500,http://127.0.0.1:5500"), ",")
 
 	db, err := sql.Open("postgres", dsn)
@@ -34,20 +36,21 @@ func main() {
 	}
 	log.Println("connected to database")
 
-	// Dependency Injection: repo → service → handler
-	repo := userrepo.NewPostgresRepository(db)
-	userRepo := userrepo.NewPostgresUserRepository(db)
-	dramaRepo := userrepo.NewPostgresDramaRepository(db)
-	badgeRepo := userrepo.NewPostgresBadgeRepository(db)
-	service := usersvc.NewService(repo, userRepo, dramaRepo, badgeRepo)
-	handler := userhandler.NewHandler(service)
-
+// ── Dependency Injection ──────────────────────────────────────────────────
+	userRepo := userrepo.NewPostgresRepository(db)
+	dramaRepo := dramarepo.NewPostgresRepository(db)
+	userService := usersvc.NewService(userRepo)
+	dramaService := dramasvc.NewService(dramaRepo)
+	authService := authsvc.NewService(userRepo)
+	userHandler := userhandler.NewHandler(userService, dramaService)
+	dramaHandler := dramahandler.NewHandler(dramaService)
+	authHandler := authhandler.NewHandler(authService)
+	// ── Routing ───────────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
-	handler.RegisterAuthRoutes(mux)
-	handler.RegisterMeRoutes(mux)
+	authHandler.RegisterRoutes(mux)   // POST /api/v1/auth/register, /api/v1/auth/login
+	userHandler.RegisterRoutes(mux)   // GET  /api/v1/users/me, /api/v1/profiles/...
+	dramaHandler.RegisterRoutes(mux)  // POST /api/v1/dramas
 
-	// Оборачиваем mux в CORS-middleware
 	httpHandler := middleware.CORS(origins)(mux)
 
 	log.Printf("hanbin-back listening on %s", addr)

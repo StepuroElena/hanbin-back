@@ -7,8 +7,7 @@ import (
 	domain "github.com/hanbin/hanbin-back/internal/domain/user"
 )
 
-// Service реализует прикладные use-case'ы.
-// Зависит от репозиториев: профилей, пользователей, дорам и бэйджей.
+// Service реализует use-case'ы для работы с профилем пользователя.
 type Service struct {
 	repo       domain.Repository
 	userRepo   domain.UserRepository
@@ -16,25 +15,23 @@ type Service struct {
 	badgeRepo  domain.BadgeRepository
 }
 
-// NewService — конструктор с внедрением зависимостей.
-func NewService(repo domain.Repository, userRepo domain.UserRepository, dramaRepo domain.DramaRepository, badgeRepo domain.BadgeRepository) *Service {
-	return &Service{repo: repo, userRepo: userRepo, dramaRepo: dramaRepo, badgeRepo: badgeRepo}
+func NewService(repo domain.Repository) *Service {
+	return &Service{repo: repo}
 }
 
-// ── DTO ──────────────────────────────────────────────────────────────────────
+// ── DTO ───────────────────────────────────────────────────────────────────────
 
-// CreateInput — входные данные для создания профиля.
+// CreateInput оставлен для совместимости с /api/v1/profiles (прямое создание без пароля).
 type CreateInput struct {
-	UserID int64  `json:"user_id"`
-	Name   string `json:"name"`
+Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
-// UpdateInput — данные для обновления профиля. Пустая строка = не менять.
 type UpdateInput struct {
-	Name string `json:"name"`
+Name  string `json:"name"`
+	Email string `json:"email"`
 }
-
-// ProfileOutput — то, что возвращается наружу (handler / API).
+// ProfileOutput — публичное представление профиля.
 type ProfileOutput struct {
 	ID        int64  `json:"id"`
 	UserID    int64  `json:"user_id"`
@@ -45,15 +42,11 @@ type ProfileOutput struct {
 
 // ── Use cases ─────────────────────────────────────────────────────────────────
 
-// Create создаёт профиль для существующего пользователя.
-// Проверяет, что пользователь с таким user_id существует.
+// Create создаёт профиль без пароля (для прямого API без авторизации).
+// Используется только в /api/v1/profiles POST.
 func (s *Service) Create(ctx context.Context, in CreateInput) (*ProfileOutput, error) {
-	// Убеждаемся, что пользователь существует
-	if _, err := s.userRepo.GetByID(ctx, in.UserID); err != nil {
-		return nil, fmt.Errorf("service.Create: %w", domain.ErrUserNotFound)
-	}
-
-	profile, err := domain.NewProfile(in.UserID, in.Name)
+	// Пустой password_hash — только для legacy эндпоинта
+	profile, err := domain.NewProfile(in.Name, in.Email, "no-password")
 	if err != nil {
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
@@ -63,7 +56,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*ProfileOutput, e
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
 
-	out := toOutput(domain.Reconstitute(id, profile.UserID(), profile.Name(), profile.CreatedAt(), profile.UpdatedAt()))
+out := toOutput(domain.Reconstitute(id, profile.Name(), profile.Email(), "", profile.CreatedAt(), profile.UpdatedAt()))
 	return &out, nil
 }
 
@@ -103,7 +96,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ── Вспомогательные функции ───────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 func toOutput(p *domain.Profile) ProfileOutput {
 	return ProfileOutput{
