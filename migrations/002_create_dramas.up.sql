@@ -16,10 +16,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- Дропаем старую таблицу и всё что от неё зависит (drama_tags и т.п.)
-DROP TABLE IF EXISTS dramas CASCADE;
-
-CREATE TABLE dramas (
+CREATE TABLE IF NOT EXISTS dramas (
     id               BIGSERIAL             PRIMARY KEY,
     profile_id       BIGINT                NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     title            VARCHAR(500)          NOT NULL,

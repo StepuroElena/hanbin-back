@@ -34,13 +34,31 @@ test:
 
 <## migrate-up: применить все миграции по порядку
 migrate-up:
-	psql "$(DSN)" -f migrations/001_create_profiles.up.sql
-	psql "$(DSN)" -f migrations/003_split_users_and_profiles.up.sql
-	psql "$(DSN)" -f migrations/004_add_name_to_users.up.sql
-	psql "$(DSN)" -f migrations/005_add_dramas_and_badges.up.sql
+psql "$(DSN)" -f migrations/001_create_profiles.up.sql
+	psql "$(DSN)" -f migrations/002_create_dramas.up.sql
+	psql "$(DSN)" -f migrations/003_add_auth_to_profiles.up.sql
+	psql "$(DSN)" -f migrations/004_add_archive_fields_to_dramas.up.sql
 ## migrate-down: откатить все миграции
 migrate-down:
-	psql "$(DSN)" -f migrations/005_add_dramas_and_badges.down.sql
-	psql "$(DSN)" -f migrations/004_add_name_to_users.down.sql
-	psql "$(DSN)" -f migrations/003_split_users_and_profiles.down.sql
+	psql "$(DSN)" -f migrations/004_add_archive_fields_to_dramas.down.sql
+	psql "$(DSN)" -f migrations/003_add_auth_to_profiles.down.sql
+	psql "$(DSN)" -f migrations/002_create_dramas.down.sql
 	psql "$(DSN)" -f migrations/001_create_profiles.down.sql
+## migrate-dramas-up: только дорамы
+migrate-dramas-up:
+	psql "$(DSN)" -f migrations/002_create_dramas.up.sql
+## migrate-dramas-down: откат только дорам
+migrate-dramas-down:
+	psql "$(DSN)" -f migrations/002_create_dramas.down.sql
+## migrate-auth-up: добавить auth-поля в profiles
+migrate-auth-up:
+	psql "$(DSN)" -f migrations/003_add_auth_to_profiles.up.sql
+## migrate-auth-down: убрать auth-поля
+migrate-auth-down:
+	psql "$(DSN)" -f migrations/003_add_auth_to_profiles.down.sql
+## migrate-archive-up: добавить поля архива/сезонов/прогресса
+migrate-archive-up:
+	psql "$(DSN)" -f migrations/004_add_archive_fields_to_dramas.up.sql
+## migrate-archive-down: откатить поля архива/сезонов/прогресса
+migrate-archive-down:
+	psql "$(DSN)" -f migrations/004_add_archive_fields_to_dramas.down.sql

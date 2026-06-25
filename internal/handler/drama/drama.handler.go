@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
 	domain "github.com/hanbin/hanbin-back/internal/domain/drama"
 	"github.com/hanbin/hanbin-back/internal/middleware"
@@ -21,9 +23,13 @@ func NewHandler(service *svc.Service) *Handler {
 
 // RegisterRoutes регистрирует маршруты:
 //
-//	POST /api/v1/dramas  — добавить дораму (требует JWT)
+//	POST   /api/v1/dramas               — добавить дораму (требует JWT)
+//	PATCH  /api/v1/dramas/{id}/archive   — установить/снять архив (требует JWT)
+//	PATCH  /api/v1/dramas/{id}           — обновить дораму (требует JWT)
+//	DELETE /api/v1/dramas/{id}           — удалить дораму (is_archived=true, требует JWT)
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/v1/dramas", middleware.Auth(http.HandlerFunc(h.handleCollection)))
+	mux.Handle("/api/v1/dramas/", middleware.Auth(http.HandlerFunc(h.handleItem)))
 }
 
 // handleCollection — диспетчер для /api/v1/dramas
@@ -34,6 +40,49 @@ func (h *Handler) handleCollection(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+// handleItem — диспетчер для /api/v1/dramas/{id}/...
+func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/dramas/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+
+	// PATCH /api/v1/dramas/{id}  — обновить
+	// DELETE /api/v1/dramas/{id} — удалить
+	if len(parts) == 1 {
+		id, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil || id <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid drama id")
+			return
+		}
+		switch r.Method {
+		case http.MethodPatch:
+			h.UpdateDrama(w, r, id)
+		case http.MethodDelete:
+			h.Delete(w, r, id)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		}
+		return
+	}
+
+	// PATCH /api/v1/dramas/{id}/archive или /unarchive
+	if len(parts) == 2 && (parts[1] == "archive" || parts[1] == "unarchive") {
+		id, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil || id <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid drama id")
+			return
+		}
+		if r.Method != http.MethodPatch {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		isArchived := parts[1] == "archive"
+		h.SetArchived(w, r, id, isArchived)
+		return
+	}
+
+	writeError(w, http.StatusNotFound, "not found")
 }
 
 // Create godoc
@@ -63,6 +112,81 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
+}
+
+// UpdateDrama godoc
+//
+//	PATCH /api/v1/dramas/{id}
+//	Header: Authorization: Bearer <token>
+//	Body: UpdateInput (JSON, все поля опциональны)
+//	200 OK  → DramaOutput (JSON)
+//	400 Bad Request
+//	401 Unauthorized
+//	404 Not Found
+func (h *Handler) UpdateDrama(w http.ResponseWriter, r *http.Request, dramaID int64) {
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var body svc.UpdateInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	out, err := h.service.Update(r.Context(), profileID, dramaID, body)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// Delete godoc
+//
+//	DELETE /api/v1/dramas/{id}
+//	Header: Authorization: Bearer <token>
+//	204 No Content  — дорама удалена
+//	400 Bad Request — дорама не архивирована
+//	401 Unauthorized
+//	404 Not Found
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request, dramaID int64) {
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.service.Delete(r.Context(), profileID, dramaID); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SetArchived godoc
+//
+//	PATCH /api/v1/dramas/{id}/archive   — архивировать дораму
+//	PATCH /api/v1/dramas/{id}/unarchive — вернуть из архива
+//	Header: Authorization: Bearer <token>
+//	200 OK  → DramaOutput (JSON)
+//	401 Unauthorized
+//	404 Not Found
+func (h *Handler) SetArchived(w http.ResponseWriter, r *http.Request, dramaID int64, isArchived bool) {
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	out, err := h.service.SetArchived(r.Context(), profileID, dramaID, isArchived)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -96,7 +220,10 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, domain.ErrInvalidRating),
 		errors.Is(err, domain.ErrInvalidReleaseTag),
 		errors.Is(err, domain.ErrInvalidTranslation),
-		errors.Is(err, domain.ErrProfileIDRequired):
+		errors.Is(err, domain.ErrProfileIDRequired),
+		errors.Is(err, domain.ErrNotArchived),
+		errors.Is(err, domain.ErrInvalidWatchStatus),
+		errors.Is(err, domain.ErrInvalidEpisodeDuration):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "internal server error")
