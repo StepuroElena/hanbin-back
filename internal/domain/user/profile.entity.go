@@ -17,14 +17,13 @@ var (
 	ErrNameRequired     = errors.New("name is required")
 	ErrEmailRequired    = errors.New("email is required")
 	ErrPasswordRequired = errors.New("password is required")
-	ErrPasswordTooShort = errors.New("password must be at least 6 characters")
+ErrPasswordTooShort = errors.New("password must be at least 8 characters")
 	ErrNameTooLong      = errors.New("name must be 255 characters or fewer")
 	ErrEmailTooLong     = errors.New("email must be 255 characters or fewer")
 	ErrEmailInvalid     = errors.New("email format is invalid")
 	ErrEmailNotUnique   = errors.New("email is already taken")
-	ErrNotFound         = errors.New("user not found")
+ErrNotFound         = errors.New("user not found")
 )
-
 // Profile — агрегат пользователя.
 type Profile struct {
 	id           int64
@@ -34,27 +33,24 @@ type Profile struct {
 	createdAt    time.Time
 	updatedAt    time.Time
 }
-
 // NewProfile создаёт валидный Profile без сохранения в БД.
 // passwordHash — уже захешированный пароль (bcrypt), передаётся из сервиса.
 func NewProfile(name, email, passwordHash string) (*Profile, error) {
 	p := &Profile{}
-
 	if err := p.SetName(name); err != nil {
 		return nil, err
 	}
-	if err := p.SetEmail(email); err != nil {
+	p := &Profile{userID: userID}
+	if err := p.SetName(name); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(passwordHash) == "" {
+if strings.TrimSpace(passwordHash) == "" {
 		return nil, ErrPasswordRequired
 	}
 	p.passwordHash = passwordHash
-
 	now := time.Now().UTC()
 	p.createdAt = now
 	p.updatedAt = now
-
 	return p, nil
 }
 
@@ -69,9 +65,7 @@ func Reconstitute(id int64, name, email, passwordHash string, createdAt, updated
 		updatedAt:    updatedAt,
 	}
 }
-
 // ── Геттеры ──────────────────────────────────────────────────────────────────
-
 func (p *Profile) ID() int64            { return p.id }
 func (p *Profile) Name() string         { return p.name }
 func (p *Profile) Email() string        { return p.email }
@@ -109,7 +103,6 @@ func (p *Profile) SetEmail(email string) error {
 	p.updatedAt = time.Now().UTC()
 	return nil
 }
-
 // ── Вспомогательные функции ───────────────────────────────────────────────────
 
 func isValidEmail(email string) bool {
