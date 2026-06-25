@@ -135,6 +135,62 @@ func (r *postgresRepository) UpdateArchived(ctx context.Context, id int64, isArc
 	return nil
 }
 
+func (r *postgresRepository) Update(ctx context.Context, d *domain.Drama) error {
+	seasonsJSON, err := json.Marshal(d.Seasons())
+	if err != nil {
+		return fmt.Errorf("drama repository.Update marshal seasons: %w", err)
+	}
+	progressJSON, err := json.Marshal(d.Progress())
+	if err != nil {
+		return fmt.Errorf("drama repository.Update marshal progress: %w", err)
+	}
+
+	const q = `
+		UPDATE dramas SET
+			title                = $1,
+			watch_url            = $2,
+			release_year         = $3,
+			release_tag          = $4,
+			translation_tag      = $5,
+			genre                = $6,
+			rating               = $7,
+			watch_status         = $8,
+			country              = $9,
+			episode_duration_min = $10,
+			seasons              = $11,
+			progress             = $12,
+			updated_at           = $13
+		WHERE id = $14`
+
+	res, err := r.db.ExecContext(ctx, q,
+		d.Title(),
+		d.WatchURL(),
+		d.ReleaseYear(),
+		string(d.ReleaseTag()),
+		string(d.TranslationTag()),
+		d.Genre(),
+		d.Rating(),
+		string(d.WatchStatus()),
+		d.Country(),
+		d.EpisodeDurationMin(),
+		seasonsJSON,
+		progressJSON,
+		time.Now().UTC(),
+		d.ID(),
+	)
+	if err != nil {
+		return fmt.Errorf("drama repository.Update: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("drama repository.Update rows affected: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
 	const q = `DELETE FROM dramas WHERE id = $1`
 

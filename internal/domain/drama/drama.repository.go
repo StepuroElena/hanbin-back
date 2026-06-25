@@ -18,4 +18,7 @@ type Repository interface {
 
 	// Delete удаляет дораму из БД по ID.
 	Delete(ctx context.Context, id int64) error
+
+	// Update обновляет все редактируемые поля дорамы.
+	Update(ctx context.Context, d *Drama) error
 }
