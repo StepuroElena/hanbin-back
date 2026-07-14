@@ -45,7 +45,7 @@ func NewProfile(name, email, passwordHash string) (*Profile, error) {
 	if err := p.SetEmail(email); err != nil {
 		return nil, err
 	}
-if strings.TrimSpace(passwordHash) == "" {
+	if strings.TrimSpace(passwordHash) == "" {
 		return nil, ErrPasswordRequired
 	}
 	p.passwordHash = passwordHash
