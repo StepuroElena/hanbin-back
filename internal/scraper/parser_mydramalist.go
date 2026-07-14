@@ -98,5 +98,8 @@ func (p *mydramalistParser) parse(_ context.Context, body, _ string) (*DramaInfo
 		}
 	}
 
+	// ── Постер ──────────────────────────────────────────────────────────────────
+	info.PosterURL = parsePosterURL(body)
+
 	return info, nil
 }

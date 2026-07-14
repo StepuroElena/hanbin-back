@@ -2,18 +2,26 @@ package scraperhandler
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
-	"github.com/hanbin/hanbin-back/internal/scraper"
+	scrapersvc "github.com/hanbin/hanbin-back/internal/service/scraper"
 )
 
-type Handler struct{}
+type Handler struct {
+	svc *scrapersvc.Service
+}
 
-func NewHandler() *Handler { return &Handler{} }
+// NewHandler создаёт хендлер скрейпинга. svc инкапсулирует гибридную
+// cache-aside/live логику — хендлер об этом ничего не знает.
+func NewHandler(svc *scrapersvc.Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/dramas/scrape", h.Scrape)
+	mux.HandleFunc("GET /api/v1/dramas/poster-proxy", h.PosterProxy)
 }
 
 // Scrape godoc
@@ -36,7 +44,7 @@ func (h *Handler) Scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := scraper.Scrape(r.Context(), title, siteURL)
+	info, err := h.svc.Scrape(r.Context(), title, siteURL)
 	if err != nil {
 		// ErrNotFound: дорама не найдена или сайт недоступен/не поддерживается
 		// bad url: невалидный site_url — ошибка клиента
@@ -46,6 +54,74 @@ func (h *Handler) Scrape(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, info)
+}
+
+// PosterProxy godoc
+//
+//	GET /api/v1/dramas/poster-proxy?url=https://cdn.example.com/poster.jpg
+//	200 OK  → image bytes, Content-Type проксируется от источника
+//	400 Bad Request
+//	502 Bad Gateway
+//
+// Зачем нужен: сайты-источники (doramatv и т.п.) часто защищают CDN с картинками
+// hotlink-защитой (проверяют Referer/User-Agent) — прямой <img src="..."> из
+// браузера на localhost получает 403, хотя тот же URL прекрасно открывается
+// с самого сайта. Бэкенд уже умеет ходить на эти сайты (спуфит UA для HTML-скрейпа),
+// так что картинку просто стримим через себя тем же способом — фронт обращается
+// к нашему домену, а не напрямую к чужому CDN.
+func (h *Handler) PosterProxy(w http.ResponseWriter, r *http.Request) {
+	raw := strings.TrimSpace(r.URL.Query().Get("url"))
+	if raw == "" {
+		writeError(w, http.StatusBadRequest, "query param 'url' is required", false)
+		return
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		writeError(w, http.StatusBadRequest, "invalid 'url'", false)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, u.String(), nil)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "не удалось запросить постер", false)
+		return
+	}
+
+	// Те же заголовки, что и при HTML-скрейпе — некоторые CDN проверяют Referer
+	// и требуют, чтобы он совпадал по хосту с картинкой (или с сайтом-источником).
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/")
+	req.Header.Set("Accept-Language", "ru,en;q=0.9")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "не удалось загрузить постер", false)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		writeError(w, http.StatusBadGateway, "источник вернул ошибку", false)
+		return
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		// Источник вернул не картинку (например, HTML-страницу с ошибкой) — не проксируем.
+		writeError(w, http.StatusBadGateway, "источник вернул не изображение", false)
+		return
+	}
+
+	// Ограничиваем размер, чтобы не превратить прокси в вектор для DoS/абьюза.
+	limited := io.LimitReader(resp.Body, 8*1024*1024)
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=86400") // постеры почти не меняются — кешируем на сутки в браузере
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, limited)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

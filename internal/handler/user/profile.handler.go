@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -139,12 +141,57 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"user_id": profile.ID,
-		"name":    profile.Name,
-		"email":   profile.Email,
-		"dramas":  dramas,
-		"badges":  []any{},
+		"user_id":   profile.ID,
+		"name":      profile.Name,
+		"email":     profile.Email,
+		"dramas":    dramas,
+		"badges":    []any{},
+		"countries": countryBreakdown(dramas),
 	})
+}
+
+// countryEntry — одна строка разбивки по странам в ответе /users/me.
+type countryEntry struct {
+	Country string `json:"country"`
+	Count   int    `json:"count"`
+	Percent int    `json:"percent"`
+}
+
+// countryBreakdown считает количество дорам по каждой стране и сортирует по убыванию.
+// Возвращает пустой слайс (не nil), если дорам нет — чтобы фронт не подменял честную
+// пустоту моковыми данными.
+func countryBreakdown(dramas []dramasvc.DramaOutput) []countryEntry {
+	result := make([]countryEntry, 0)
+	if len(dramas) == 0 {
+		return result
+	}
+
+	counts := make(map[string]int)
+	for _, d := range dramas {
+		c := strings.TrimSpace(d.Country)
+		if c == "" {
+			c = "unknown"
+		}
+		counts[c]++
+	}
+
+	total := len(dramas)
+	for country, count := range counts {
+		result = append(result, countryEntry{
+			Country: country,
+			Count:   count,
+			Percent: int(math.Round(float64(count) / float64(total) * 100)),
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Count != result[j].Count {
+			return result[i].Count > result[j].Count
+		}
+		return result[i].Country < result[j].Country // стабильный порядок при равенстве
+	})
+
+	return result
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -186,6 +233,16 @@ func writeServiceError(w http.ResponseWriter, err error) {
 	}
 }
 
+
+// isError сравнивает err с target через errors.Is (обёртка для читаемости).
+func isError(err, target error) bool {
+	return errors.Is(err, target)
+}
+
+// unwrapMessage возвращает текст ошибки для отдачи клиенту.
+func unwrapMessage(err error) string {
+	return err.Error()
+}
 
 func parseID(urlPath, prefix string) (int64, error) {
 	raw := strings.TrimPrefix(urlPath, prefix)

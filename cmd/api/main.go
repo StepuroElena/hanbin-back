@@ -15,9 +15,11 @@ import (
 	userhandler    "github.com/hanbin/hanbin-back/internal/handler/user"
 	"github.com/hanbin/hanbin-back/internal/middleware"
 	dramarepo "github.com/hanbin/hanbin-back/internal/repository/drama"
+	scrapecacherepo "github.com/hanbin/hanbin-back/internal/repository/scrapecache"
 	userrepo  "github.com/hanbin/hanbin-back/internal/repository/user"
 	authsvc  "github.com/hanbin/hanbin-back/internal/service/auth"
 	dramasvc "github.com/hanbin/hanbin-back/internal/service/drama"
+	scrapersvc "github.com/hanbin/hanbin-back/internal/service/scraper"
 	usersvc  "github.com/hanbin/hanbin-back/internal/service/user"
 )
 
@@ -40,13 +42,15 @@ func main() {
 // ── Dependency Injection ──────────────────────────────────────────────────
 	userRepo  := userrepo.NewPostgresRepository(db)
 	dramaRepo := dramarepo.NewPostgresRepository(db)
+	scrapeCacheRepo := scrapecacherepo.NewPostgresRepository(db)
 	userService  := usersvc.NewService(userRepo)
 	dramaService := dramasvc.NewService(dramaRepo)
 	authService  := authsvc.NewService(userRepo)
+	scrapeService := scrapersvc.NewService(scrapeCacheRepo) // гибрид: cache-aside с TTL поверх internal/scraper
 	userHandler   := userhandler.NewHandler(userService, dramaService)
 	dramaHandler  := dramahandler.NewHandler(dramaService)
 	authHandler   := authhandler.NewHandler(authService)
-	scrapeHandler := scraperhandler.NewHandler()
+	scrapeHandler := scraperhandler.NewHandler(scrapeService)
 	// ── Routing ───────────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
 	authHandler.RegisterRoutes(mux)   // POST /api/v1/auth/register, /api/v1/auth/login

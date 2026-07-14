@@ -175,3 +175,31 @@ func parseDurationFromBody(body string) *int {
 
 	return nil
 }
+
+// ── Постер ──────────────────────────────────────────────────────────────────────────────
+
+// parsePosterURL извлекает URL постера из og:image / twitter:image или JSON-LD image.
+// Вызывается в конце каждого парсера на body страницы конкретной дорамы (не поиска),
+// чтобы не таскать постер через отдельный CORS-прокси на фронте (часто блокируется
+// антибот-защитой целевого сайта) — бэкенд уже скачал HTML и может отдать готовый URL картинки.
+func parsePosterURL(body string) string {
+	if og := metaContent(body, "og:image"); og != "" {
+		return resolvePosterURL(og)
+	}
+	if tw := metaContent(body, "twitter:image"); tw != "" {
+		return resolvePosterURL(tw)
+	}
+	if jl := jsonLDField(body, "image"); jl != "" {
+		return resolvePosterURL(jl)
+	}
+	return ""
+}
+
+// resolvePosterURL чинит protocol-relative ссылки (//host/img.jpg) до полного https:// URL.
+func resolvePosterURL(u string) string {
+	u = strings.TrimSpace(u)
+	if strings.HasPrefix(u, "//") {
+		return "https:" + u
+	}
+	return u
+}

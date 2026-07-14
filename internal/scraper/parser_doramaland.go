@@ -287,5 +287,8 @@ func (p *doramalandParser) parseDramaPage(body string) (*DramaInfo, error) {
 		}
 	}
 
+	// ── Постер ──────────────────────────────────────────────────────────────────
+	info.PosterURL = parsePosterURL(body)
+
 	return info, nil
 }

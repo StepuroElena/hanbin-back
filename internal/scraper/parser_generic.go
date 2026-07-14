@@ -92,6 +92,9 @@ func (p *genericParser) parse(_ context.Context, body, _ string) (*DramaInfo, er
 	// ── Сезоны ─────────────────────────────────────────────────────────────────
 	info.Seasons = parseSeasonsGeneric(body)
 
+	// ── Постер ──
+	info.PosterURL = parsePosterURL(body)
+
 	return info, nil
 }
 

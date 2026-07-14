@@ -36,6 +36,7 @@ type ProfileOutput struct {
 	ID        int64  `json:"id"`
 	UserID    int64  `json:"user_id"`
 	Name      string `json:"name"`
+	Email     string `json:"email"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -101,8 +102,9 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 func toOutput(p *domain.Profile) ProfileOutput {
 	return ProfileOutput{
 		ID:        p.ID(),
-		UserID:    p.UserID(),
+		UserID:    p.ID(),
 		Name:      p.Name(),
+		Email:     p.Email(),
 		CreatedAt: p.CreatedAt().Format("2006-01-02T15:04:05Z"),
 		UpdatedAt: p.UpdatedAt().Format("2006-01-02T15:04:05Z"),
 	}

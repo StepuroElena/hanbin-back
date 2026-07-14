@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
+
 	domain "github.com/hanbin/hanbin-back/internal/domain/user"
 )
 
@@ -32,7 +34,7 @@ p.Name(), p.Email(), p.PasswordHash(), p.CreatedAt(), p.UpdatedAt(),
 	).Scan(&id)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return 0, domain.ErrProfileExists
+			return 0, domain.ErrEmailNotUnique
 		}
 		return 0, fmt.Errorf("repository.Create: %w", err)
 	}
@@ -112,7 +114,17 @@ return domain.Reconstitute(id, name, email, passwordHash, createdAt, updatedAt),
 }
 
 func isUniqueViolation(err error) bool {
-return err != nil && containsAny(err.Error(), "23505", "unique constraint", "duplicate key")
+	if err == nil {
+		return false
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		// 23505 = unique_violation (SQLSTATE); не зависит от локали сервера,
+		// в отличие от текста сообщения ошибки.
+		return pqErr.Code == "23505"
+	}
+	// Фоллбэк на случай, если драйвер вернёт не *pq.Error (например, обёртка пула).
+	return containsAny(err.Error(), "23505", "unique constraint", "duplicate key")
 }
 
 func containsAny(s string, subs ...string) bool {

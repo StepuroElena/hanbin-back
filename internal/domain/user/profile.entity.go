@@ -17,12 +17,14 @@ var (
 	ErrNameRequired     = errors.New("name is required")
 	ErrEmailRequired    = errors.New("email is required")
 	ErrPasswordRequired = errors.New("password is required")
-ErrPasswordTooShort = errors.New("password must be at least 8 characters")
+	ErrPasswordTooShort = errors.New("password must be at least 8 characters")
 	ErrNameTooLong      = errors.New("name must be 255 characters or fewer")
 	ErrEmailTooLong     = errors.New("email must be 255 characters or fewer")
 	ErrEmailInvalid     = errors.New("email format is invalid")
 	ErrEmailNotUnique   = errors.New("email is already taken")
-ErrNotFound         = errors.New("user not found")
+	ErrNotFound         = errors.New("user not found")
+	ErrProfileExists    = errors.New("profile already exists")
+	ErrUserIDRequired   = errors.New("user id is required")
 )
 // Profile — агрегат пользователя.
 type Profile struct {
@@ -40,8 +42,7 @@ func NewProfile(name, email, passwordHash string) (*Profile, error) {
 	if err := p.SetName(name); err != nil {
 		return nil, err
 	}
-	p := &Profile{userID: userID}
-	if err := p.SetName(name); err != nil {
+	if err := p.SetEmail(email); err != nil {
 		return nil, err
 	}
 if strings.TrimSpace(passwordHash) == "" {

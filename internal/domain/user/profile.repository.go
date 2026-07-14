@@ -14,7 +14,7 @@ type Repository interface {
 
 // GetByEmail возвращает Profile по email (нужен для логина).
 	// Возвращает ErrNotFound, если запись не найдена.
-	GetByUserID(ctx context.Context, userID int64) (*Profile, error)
+	GetByEmail(ctx context.Context, email string) (*Profile, error)
 
 // Update сохраняет изменённые поля Profile (name, email).
 	Update(ctx context.Context, profile *Profile) error

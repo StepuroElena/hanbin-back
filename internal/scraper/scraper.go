@@ -34,6 +34,7 @@ type DramaInfo struct {
 	EpisodeDurationMin *int         `json:"episode_duration_min"`
 	Seasons            []SeasonInfo `json:"seasons"`
 	SourceURL          string       `json:"source_url"`
+	PosterURL          string       `json:"poster_url"`
 }
 
 // ── Интерфейс парсера ─────────────────────────────────────────────────────────

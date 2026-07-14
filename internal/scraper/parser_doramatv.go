@@ -298,6 +298,9 @@ func (p *doramatvParser) parseDramaPage(body string) (*DramaInfo, error) {
 	// "16 из 16 65 мин." из блока с title "Серий"
 	p.parseEpisodes(body, info)
 
+	// ── Постер ──────────────────────────────────────────────────────────────────
+	info.PosterURL = parsePosterURL(body)
+
 	return info, nil
 }
 
