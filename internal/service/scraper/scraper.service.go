@@ -96,20 +96,31 @@ func (s *Service) Scrape(ctx context.Context, title, siteURL string) (*scraper.D
 }
 
 // ScrapeHot возвращает список “Горячие новинки” с главной doramatv.one.
-// Кешируется отдельно от обычного Scrape по титулам — одна запись на всех, короткий TTL.
+// Кеширует всегда ПОЛНЫЙ список (с большим внутренним лимитом), а обрезает
+// по запрошенному limit уже при отдаче — иначе один запрос с маленьким
+// limit закешировал бы урезанный список на всех, кто придёт позже с большим limit.
+const hotListInternalCap = 30
+
 func (s *Service) ScrapeHot(ctx context.Context, limit int) ([]scraper.HotDrama, error) {
+	sliceTo := func(list []scraper.HotDrama) []scraper.HotDrama {
+		if limit > 0 && len(list) > limit {
+			return list[:limit]
+		}
+		return list
+	}
+
 	if s.repo != nil {
 		if entry, err := s.repo.Get(ctx, hotListCacheKey); err == nil {
 			if time.Since(entry.ScrapedAt) < HotListTTL {
 				var list []scraper.HotDrama
 				if jsonErr := json.Unmarshal(entry.Data, &list); jsonErr == nil {
-					return list, nil
+					return sliceTo(list), nil
 				}
 			}
 		}
 	}
 
-	list, err := scraper.ScrapeHot(ctx, limit)
+	list, err := scraper.ScrapeHot(ctx, hotListInternalCap)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +131,7 @@ func (s *Service) ScrapeHot(ctx context.Context, limit int) ([]scraper.HotDrama,
 		}
 	}
 
-	return list, nil
+	return sliceTo(list), nil
 }
 
 // cacheKey строит стабильный ключ кеша: normalized(title) + "|" + host сайта.
