@@ -32,6 +32,13 @@ import (
 // выпуска/перевода и рейтинг могут обновляться, поэтому TTL не берём слишком большим.
 const DefaultTTL = 14 * 24 * time.Hour
 
+// HotListTTL — TTL для блока "Горячие новинки": обновляется чаще, чем карточка
+// отдельной дорамы, но всё равно не на каждый визит гостя ходим на сайт.
+const HotListTTL = 3 * time.Hour
+
+// hotListCacheKey — фиксированный ключ кеша для списка новинок (один на всех пользователей).
+const hotListCacheKey = "hot-list|doramatv.one"
+
 type Service struct {
 	repo scrapecache.Repository
 	ttl  time.Duration
@@ -86,6 +93,34 @@ func (s *Service) Scrape(ctx context.Context, title, siteURL string) (*scraper.D
 	}
 
 	return info, nil
+}
+
+// ScrapeHot возвращает список “Горячие новинки” с главной doramatv.one.
+// Кешируется отдельно от обычного Scrape по титулам — одна запись на всех, короткий TTL.
+func (s *Service) ScrapeHot(ctx context.Context, limit int) ([]scraper.HotDrama, error) {
+	if s.repo != nil {
+		if entry, err := s.repo.Get(ctx, hotListCacheKey); err == nil {
+			if time.Since(entry.ScrapedAt) < HotListTTL {
+				var list []scraper.HotDrama
+				if jsonErr := json.Unmarshal(entry.Data, &list); jsonErr == nil {
+					return list, nil
+				}
+			}
+		}
+	}
+
+	list, err := scraper.ScrapeHot(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.repo != nil {
+		if data, jsonErr := json.Marshal(list); jsonErr == nil {
+			_ = s.repo.Upsert(ctx, hotListCacheKey, "hot-list", "doramatv.one", data)
+		}
+	}
+
+	return list, nil
 }
 
 // cacheKey строит стабильный ключ кеша: normalized(title) + "|" + host сайта.

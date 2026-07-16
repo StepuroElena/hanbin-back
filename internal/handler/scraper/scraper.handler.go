@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ func NewHandler(svc *scrapersvc.Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/dramas/scrape", h.Scrape)
+	mux.HandleFunc("GET /api/v1/dramas/hot", h.Hot)
 	mux.HandleFunc("GET /api/v1/dramas/poster-proxy", h.PosterProxy)
 }
 
@@ -54,6 +56,30 @@ func (h *Handler) Scrape(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, info)
+}
+
+// Hot godoc
+//
+//	GET /api/v1/dramas/hot?limit=10
+//	200 OK        → [] scraper.HotDrama (всегда массив, даже пустой [])
+//
+// Публичный эндпоинт, без авторизации — используется на гостевой странице (блок “Тебе понравится”).
+// Никогда не возвращает ошибку клиенту при сбое — отдаёт пустой массив, чтобы фронт просто скрыл блок.
+func (h *Handler) Hot(w http.ResponseWriter, r *http.Request) {
+	limit := 10
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 30 {
+			limit = v
+		}
+	}
+
+	list, err := h.svc.ScrapeHot(r.Context(), limit)
+	if err != nil {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, list)
 }
 
 // PosterProxy godoc
