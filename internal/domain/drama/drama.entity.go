@@ -128,6 +128,7 @@ type Drama struct {
 	isArchived          bool
 	episodeDurationMin  *int    // nil = не указан
 	voiceover           string  // "" = не указана, парсится с сайта-источника
+	posterURL           string  // "" = нет постера, извлекается скрейпером из og:image
 	seasons             []Season
 	progress            Progress
 	createdAt           time.Time
@@ -147,6 +148,7 @@ func NewDrama(
 	rating *float64,
 	country string,
 	voiceover string,
+	posterURL string,
 ) (*Drama, error) {
 	if profileID <= 0 {
 		return nil, ErrProfileIDRequired
@@ -184,6 +186,7 @@ func NewDrama(
 	if err := d.setVoiceover(voiceover); err != nil {
 		return nil, err
 	}
+	d.posterURL = strings.TrimSpace(posterURL)
 
 	// При создании статус всегда "запланировано"
 	d.watchStatus = WatchStatusPlanned
@@ -209,6 +212,7 @@ func Reconstitute(
 	isArchived bool,
 	episodeDurationMin *int,
 	voiceover string,
+	posterURL string,
 	seasons []Season,
 	progress Progress,
 	createdAt, updatedAt time.Time,
@@ -234,6 +238,7 @@ func Reconstitute(
 		isArchived:         isArchived,
 		episodeDurationMin: episodeDurationMin,
 		voiceover:          voiceover,
+		posterURL:          posterURL,
 		seasons:            seasons,
 		progress:           progress,
 		createdAt:          createdAt,
@@ -257,6 +262,7 @@ func (d *Drama) Country() string                { return d.country }
 func (d *Drama) IsArchived() bool               { return d.isArchived }
 func (d *Drama) EpisodeDurationMin() *int       { return d.episodeDurationMin }
 func (d *Drama) Voiceover() string              { return d.voiceover }
+func (d *Drama) PosterURL() string               { return d.posterURL }
 func (d *Drama) Seasons() []Season              { return d.seasons }
 func (d *Drama) Progress() Progress             { return d.progress }
 func (d *Drama) CreatedAt() time.Time           { return d.createdAt }
