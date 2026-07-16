@@ -9,13 +9,14 @@ import (
 // ── Константы и ошибки домена ─────────────────────────────────────────────────
 
 const (
-	MaxTitleLength   = 500
-	MaxGenreLength   = 100
-	MaxCountryLength = 100
-	MinRating        = 0.0
-	MaxRating        = 10.0
-	MinYear          = 1900
-	MaxYear          = 2100
+	MaxTitleLength     = 500
+	MaxGenreLength     = 100
+	MaxCountryLength   = 100
+	MaxVoiceoverLength = 255
+	MinRating          = 0.0
+	MaxRating          = 10.0
+	MinYear            = 1900
+	MaxYear            = 2100
 )
 
 var (
@@ -34,6 +35,7 @@ var (
 	ErrNotFound               = errors.New("drama not found")
 	ErrNotArchived            = errors.New("drama must be archived before deletion")
 	ErrProfileIDRequired      = errors.New("profile_id is required")
+	ErrVoiceoverTooLong       = errors.New("voiceover must be 255 characters or fewer")
 	ErrInvalidEpisodeDuration = errors.New("episode_duration_min must be greater than 0")
 	ErrInvalidSeasonNumber    = errors.New("season_number must be greater than 0")
 	ErrInvalidEpisodeCount    = errors.New("episode_count must be greater than 0")
@@ -125,6 +127,7 @@ type Drama struct {
 	country             string
 	isArchived          bool
 	episodeDurationMin  *int    // nil = не указан
+	voiceover           string  // "" = не указана, парсится с сайта-источника
 	seasons             []Season
 	progress            Progress
 	createdAt           time.Time
@@ -143,6 +146,7 @@ func NewDrama(
 	genre string,
 	rating *float64,
 	country string,
+	voiceover string,
 ) (*Drama, error) {
 	if profileID <= 0 {
 		return nil, ErrProfileIDRequired
@@ -177,6 +181,9 @@ func NewDrama(
 	if err := d.setCountry(country); err != nil {
 		return nil, err
 	}
+	if err := d.setVoiceover(voiceover); err != nil {
+		return nil, err
+	}
 
 	// При создании статус всегда "запланировано"
 	d.watchStatus = WatchStatusPlanned
@@ -201,6 +208,7 @@ func Reconstitute(
 	country string,
 	isArchived bool,
 	episodeDurationMin *int,
+	voiceover string,
 	seasons []Season,
 	progress Progress,
 	createdAt, updatedAt time.Time,
@@ -225,6 +233,7 @@ func Reconstitute(
 		country:            country,
 		isArchived:         isArchived,
 		episodeDurationMin: episodeDurationMin,
+		voiceover:          voiceover,
 		seasons:            seasons,
 		progress:           progress,
 		createdAt:          createdAt,
@@ -247,6 +256,7 @@ func (d *Drama) WatchStatus() WatchStatus       { return d.watchStatus }
 func (d *Drama) Country() string                { return d.country }
 func (d *Drama) IsArchived() bool               { return d.isArchived }
 func (d *Drama) EpisodeDurationMin() *int       { return d.episodeDurationMin }
+func (d *Drama) Voiceover() string              { return d.voiceover }
 func (d *Drama) Seasons() []Season              { return d.seasons }
 func (d *Drama) Progress() Progress             { return d.progress }
 func (d *Drama) CreatedAt() time.Time           { return d.createdAt }
@@ -313,5 +323,15 @@ func (d *Drama) setCountry(country string) error {
 		return ErrCountryTooLong
 	}
 	d.country = country
+	return nil
+}
+
+// setVoiceover устанавливает озвучку. Поле опциональное — пустая строка допустима.
+func (d *Drama) setVoiceover(voiceover string) error {
+	voiceover = strings.TrimSpace(voiceover)
+	if len([]rune(voiceover)) > MaxVoiceoverLength {
+		return ErrVoiceoverTooLong
+	}
+	d.voiceover = voiceover
 	return nil
 }

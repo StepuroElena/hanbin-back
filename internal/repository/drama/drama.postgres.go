@@ -35,14 +35,14 @@ func (r *postgresRepository) Create(ctx context.Context, d *domain.Drama) (int64
 			profile_id, title, watch_url, release_year,
 			release_tag, translation_tag, genre, rating,
 			watch_status, country,
-			is_archived, episode_duration_min, seasons, progress,
+			is_archived, episode_duration_min, voiceover, seasons, progress,
 			created_at, updated_at
 		) VALUES (
 			$1,  $2,  $3,  $4,
 			$5,  $6,  $7,  $8,
 			$9,  $10,
-			$11, $12, $13, $14,
-			$15, $16
+			$11, $12, $13, $14, $15,
+			$16, $17
 		) RETURNING id`
 
 	var id int64
@@ -59,6 +59,7 @@ func (r *postgresRepository) Create(ctx context.Context, d *domain.Drama) (int64
 		d.Country(),
 		d.IsArchived(),
 		d.EpisodeDurationMin(),
+		d.Voiceover(),
 		seasonsJSON,
 		progressJSON,
 		d.CreatedAt(),
@@ -76,7 +77,7 @@ func (r *postgresRepository) GetAllByProfileID(ctx context.Context, profileID in
 		SELECT id, profile_id, title, watch_url, release_year,
 		       release_tag, translation_tag, genre, rating,
 		       watch_status, country,
-		       is_archived, episode_duration_min, seasons, progress,
+		       is_archived, episode_duration_min, voiceover, seasons, progress,
 		       created_at, updated_at
 		FROM dramas
 		WHERE profile_id = $1
@@ -107,7 +108,7 @@ func (r *postgresRepository) GetByID(ctx context.Context, id int64) (*domain.Dra
 		SELECT id, profile_id, title, watch_url, release_year,
 		       release_tag, translation_tag, genre, rating,
 		       watch_status, country,
-		       is_archived, episode_duration_min, seasons, progress,
+		       is_archived, episode_duration_min, voiceover, seasons, progress,
 		       created_at, updated_at
 		FROM dramas
 		WHERE id = $1`
@@ -157,10 +158,11 @@ func (r *postgresRepository) Update(ctx context.Context, d *domain.Drama) error 
 			watch_status         = $8,
 			country              = $9,
 			episode_duration_min = $10,
-			seasons              = $11,
-			progress             = $12,
-			updated_at           = $13
-		WHERE id = $14`
+			voiceover            = $11,
+			seasons              = $12,
+			progress             = $13,
+			updated_at           = $14
+		WHERE id = $15`
 
 	res, err := r.db.ExecContext(ctx, q,
 		d.Title(),
@@ -173,6 +175,7 @@ func (r *postgresRepository) Update(ctx context.Context, d *domain.Drama) error 
 		string(d.WatchStatus()),
 		d.Country(),
 		d.EpisodeDurationMin(),
+		d.Voiceover(),
 		seasonsJSON,
 		progressJSON,
 		time.Now().UTC(),
@@ -229,6 +232,7 @@ func scanDrama(row rowScanner) (*domain.Drama, error) {
 		country            string
 		isArchived         bool
 		episodeDurationMin sql.NullInt32
+		voiceover          sql.NullString
 		seasonsJSON        []byte
 		progressJSON       []byte
 		createdAt          time.Time
@@ -239,7 +243,7 @@ func scanDrama(row rowScanner) (*domain.Drama, error) {
 		&id, &profileID, &title, &watchURL, &releaseYear,
 		&releaseTagStr, &translTagStr, &genre, &rating,
 		&watchStatusStr, &country,
-		&isArchived, &episodeDurationMin, &seasonsJSON, &progressJSON,
+		&isArchived, &episodeDurationMin, &voiceover, &seasonsJSON, &progressJSON,
 		&createdAt, &updatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -286,6 +290,7 @@ func scanDrama(row rowScanner) (*domain.Drama, error) {
 		country,
 		isArchived,
 		durationPtr,
+		voiceover.String,
 		seasons,
 		progress,
 		createdAt, updatedAt,

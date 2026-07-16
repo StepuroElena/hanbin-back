@@ -298,6 +298,9 @@ func (p *doramatvParser) parseDramaPage(body string) (*DramaInfo, error) {
 	// "16 из 16 65 мин." из блока с title "Серий"
 	p.parseEpisodes(body, info)
 
+	// ── Озвучка ───────────────────────────────────────────────────────────────
+	info.Voiceover = p.parseVoiceover(body)
+
 	// ── Постер ──────────────────────────────────────────────────────────────────
 	info.PosterURL = parsePosterURL(body)
 
@@ -432,4 +435,22 @@ func (p *doramatvParser) parseEpisodes(body string, info *DramaInfo) {
 			info.EpisodeDurationMin = ptr(v)
 		}
 	}
+}
+
+// parseVoiceover извлекает студию/автора озвучки из блока деталей с title "Озвучка".
+// Структура аналогична блоку "Серий":
+//   <div class="cr-info-details-item__title">Озвучка</div>
+//   <div ...>LostFilm, HDrezka Studio</div>
+func (p *doramatvParser) parseVoiceover(body string) string {
+	reVoiceBlock := regexp.MustCompile(`(?i)cr-info-details-item__title">Озвучка</div>\s*<div[^>]*>([\s\S]{0,400}?)</div>\s*</div>`)
+	m := reVoiceBlock.FindStringSubmatch(body)
+	if len(m) < 2 {
+		return ""
+	}
+	voiceover := stripTags(m[1])
+	voiceover = strings.TrimSpace(voiceover)
+	if len([]rune(voiceover)) > 255 {
+		voiceover = string([]rune(voiceover)[:255])
+	}
+	return voiceover
 }

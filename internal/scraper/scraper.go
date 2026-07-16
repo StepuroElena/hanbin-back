@@ -32,6 +32,7 @@ type DramaInfo struct {
 	Rating             *float64     `json:"rating"`
 	Country            string       `json:"country"`
 	EpisodeDurationMin *int         `json:"episode_duration_min"`
+	Voiceover          string       `json:"voiceover"`
 	Seasons            []SeasonInfo `json:"seasons"`
 	SourceURL          string       `json:"source_url"`
 	PosterURL          string       `json:"poster_url"`

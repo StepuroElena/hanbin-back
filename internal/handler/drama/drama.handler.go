@@ -223,6 +223,7 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, domain.ErrProfileIDRequired),
 		errors.Is(err, domain.ErrNotArchived),
 		errors.Is(err, domain.ErrInvalidWatchStatus),
+		errors.Is(err, domain.ErrVoiceoverTooLong),
 		errors.Is(err, domain.ErrInvalidEpisodeDuration):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:

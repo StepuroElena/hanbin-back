@@ -47,6 +47,7 @@ type CreateInput struct {
 	Genre          string   `json:"genre"`
 	Rating         *float64 `json:"rating"`          // опционально
 	Country        string   `json:"country"`
+	Voiceover      string   `json:"voiceover"`       // опционально, парсится с сайта-источника
 }
 
 // ArchiveInput — тело запроса на изменение статуса архива.
@@ -86,6 +87,7 @@ type UpdateInput struct {
 	WatchStatus        *string        `json:"watch_status"`
 	Country            *string        `json:"country"`
 	EpisodeDurationMin *int           `json:"episode_duration_min"` // null = сбросить
+	Voiceover          *string        `json:"voiceover"`            // null = не менять
 	Seasons            []SeasonInput  `json:"seasons"`
 	Progress           *ProgressInput `json:"progress"`
 }
@@ -105,6 +107,7 @@ type DramaOutput struct {
 	Country            string         `json:"country"`
 	IsArchived         bool           `json:"is_archived"`
 	EpisodeDurationMin *int           `json:"episode_duration_min"`
+	Voiceover          string         `json:"voiceover"`
 	Seasons            []SeasonOutput `json:"seasons"`
 	Progress           ProgressOutput `json:"progress"`
 	CreatedAt          string         `json:"created_at"`
@@ -135,6 +138,7 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 		in.Genre,
 		in.Rating,
 		in.Country,
+		in.Voiceover,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("service.Create: %w", err)
@@ -153,6 +157,7 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 		d.Genre(), d.Rating(),
 		d.WatchStatus(), d.Country(),
 		d.IsArchived(), d.EpisodeDurationMin(),
+		d.Voiceover(),
 		d.Seasons(), d.Progress(),
 		d.CreatedAt(), d.UpdatedAt(),
 	))
@@ -219,6 +224,7 @@ func (s *Service) Update(ctx context.Context, profileID, dramaID int64, in Updat
 	watchStatus    := d.WatchStatus()
 	country        := d.Country()
 	duration       := d.EpisodeDurationMin()
+	voiceover      := d.Voiceover()
 	seasons        := d.Seasons()
 	progress       := d.Progress()
 
@@ -269,6 +275,9 @@ func (s *Service) Update(ctx context.Context, profileID, dramaID int64, in Updat
 		}
 		duration = in.EpisodeDurationMin
 	}
+	if in.Voiceover != nil {
+		voiceover = *in.Voiceover
+	}
 	if in.Seasons != nil {
 		mapped := make([]domain.Season, 0, len(in.Seasons))
 		for _, s := range in.Seasons {
@@ -302,6 +311,7 @@ func (s *Service) Update(ctx context.Context, profileID, dramaID int64, in Updat
 		genre, rating,
 		watchStatus, country,
 		d.IsArchived(), duration,
+		voiceover,
 		seasons, progress,
 		d.CreatedAt(), d.UpdatedAt(),
 	)
@@ -324,6 +334,9 @@ func (s *Service) Update(ctx context.Context, profileID, dramaID int64, in Updat
 	}
 	if rating != nil && (*rating < domain.MinRating || *rating > domain.MaxRating) {
 		return nil, fmt.Errorf("service.Update: %w", domain.ErrInvalidRating)
+	}
+	if len([]rune(strings.TrimSpace(voiceover))) > domain.MaxVoiceoverLength {
+		return nil, fmt.Errorf("service.Update: %w", domain.ErrVoiceoverTooLong)
 	}
 
 	if err := s.repo.Update(ctx, updated); err != nil {
@@ -392,6 +405,7 @@ func toOutput(d *domain.Drama) DramaOutput {
 		Country:        d.Country(),
 		IsArchived:     d.IsArchived(),
 		EpisodeDurationMin: d.EpisodeDurationMin(),
+		Voiceover:      d.Voiceover(),
 		Seasons:        seasons,
 		Progress: ProgressOutput{
 			CurrentEpisode: prog.CurrentEpisode,
