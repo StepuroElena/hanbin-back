@@ -70,12 +70,45 @@ var (
 	reEntityTileMarker = regexp.MustCompile(`class="[^"]*entity-card-tile[^"]*"`)
 	reHref             = regexp.MustCompile(`href="([^"]+)"`)
 	reTileTitle        = regexp.MustCompile(`entity-card-tile__title[^>]*>([^<]+)<`)
-	reImgDataOriginal  = regexp.MustCompile(`data-original="([^"]+)"`)
-	reImgSrc           = regexp.MustCompile(`<img[^>]*src="([^"]+)"`)
 	reCompactRate      = regexp.MustCompile(`compact-rate[^>]*title="([^"]+)"`)
 	reGenre            = regexp.MustCompile(`elem_genre[^>]*>([^<]+)<`)
 	rePopover          = regexp.MustCompile(`html-popover-holder[^>]*>([\s\S]{0,200}?)<`)
+
+	// Атрибуты ленивой загрузки картинок встречаются разные у разных версток сайта —
+	// перебираем все известные варианты по приоритету, последним шлом — любая
+	// ссылка на картинку внутри чанка карточки.
+	reImgDataSrc      = regexp.MustCompile(`data-src="([^"]+\.(?:jpe?g|png|webp)[^"]*)"`)
+	reImgDataOriginal = regexp.MustCompile(`data-original="([^"]+)"`)
+	reImgDataLazy     = regexp.MustCompile(`data-lazy(?:-src)?="([^"]+)"`)
+	reImgSrcset       = regexp.MustCompile(`srcset="([^"\s]+)`)
+	reImgSrc          = regexp.MustCompile(`<img[^>]*\ssrc="([^"]+)"`)
+	reAnyImageURL      = regexp.MustCompile(`https?://[^"'\s]+\.(?:jpe?g|png|webp)`)
 )
+
+// extractCover перебирает все известные атрибуты ленивой загрузки по приоритету, чтобы
+// не зависеть от точного названия атрибута, которое могло поменяться у сайта:
+// obычный <img src> часто содержит placeholder (прозрачный пиксель), поэтому он в конце списка.
+func extractCover(chunk string) string {
+	if m := reImgDataSrc.FindStringSubmatch(chunk); len(m) >= 2 {
+		return m[1]
+	}
+	if m := reImgDataOriginal.FindStringSubmatch(chunk); len(m) >= 2 {
+		return m[1]
+	}
+	if m := reImgDataLazy.FindStringSubmatch(chunk); len(m) >= 2 {
+		return m[1]
+	}
+	if m := reImgSrcset.FindStringSubmatch(chunk); len(m) >= 2 {
+		return m[1]
+	}
+	if m := reAnyImageURL.FindString(chunk); m != "" {
+		return m
+	}
+	if m := reImgSrc.FindStringSubmatch(chunk); len(m) >= 2 {
+		return m[1]
+	}
+	return ""
+}
 
 // extractEntityCardTiles разбивает секцию на карточки .entity-card-tile
 // (та же стратегия "разбить по маркерам", что и в parser_doramatv.go для
@@ -110,12 +143,7 @@ func extractEntityCardTiles(section string) []HotDrama {
 			title = strings.TrimSpace(tm[1])
 		}
 
-		cover := ""
-		if cm := reImgDataOriginal.FindStringSubmatch(chunk); len(cm) >= 2 {
-			cover = cm[1]
-		} else if cm := reImgSrc.FindStringSubmatch(chunk); len(cm) >= 2 {
-			cover = cm[1]
-		}
+		cover := extractCover(chunk)
 
 		var rating *float64
 		if rm := reCompactRate.FindStringSubmatch(chunk); len(rm) >= 2 {
