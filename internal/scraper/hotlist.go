@@ -67,12 +67,15 @@ func extractFeedSection(body, tabText string) (string, bool) {
 }
 
 var (
-	reEntityTileMarker = regexp.MustCompile(`class="[^"]*entity-card-tile[^"]*"`)
-	reHref             = regexp.MustCompile(`href="([^"]+)"`)
-	reTileTitle        = regexp.MustCompile(`entity-card-tile__title[^>]*>([^<]+)<`)
-	reCompactRate      = regexp.MustCompile(`compact-rate[^>]*title="([^"]+)"`)
-	reGenre            = regexp.MustCompile(`elem_genre[^>]*>([^<]+)<`)
-	rePopover          = regexp.MustCompile(`html-popover-holder[^>]*>([\s\S]{0,200}?)<`)
+	// Матчим ЦЕЛИКОМ открывающий тег <a ...> с классом entity-card-tile,
+	// независимо от порядка атрибутов внутри — href и class могут идти в любом
+	// порядке, поэтому href ищем внутри именно этого совпадения, а не всего чанка.
+	reTileOpenTag = regexp.MustCompile(`<a\s[^>]*class="[^"]*entity-card-tile[^"]*"[^>]*>`)
+	reHref        = regexp.MustCompile(`href="([^"]+)"`)
+	reTileTitle   = regexp.MustCompile(`entity-card-tile__title[^>]*>([^<]+)<`)
+	reCompactRate = regexp.MustCompile(`compact-rate[^>]*title="([^"]+)"`)
+	reGenre       = regexp.MustCompile(`elem_genre[^>]*>([^<]+)<`)
+	rePopover     = regexp.MustCompile(`html-popover-holder[^>]*>([\s\S]{0,200}?)<`)
 
 	// Атрибуты ленивой загрузки картинок встречаются разные у разных версток сайта —
 	// перебираем все известные варианты по приоритету, последним шлом — любая
@@ -82,12 +85,12 @@ var (
 	reImgDataLazy     = regexp.MustCompile(`data-lazy(?:-src)?="([^"]+)"`)
 	reImgSrcset       = regexp.MustCompile(`srcset="([^"\s]+)`)
 	reImgSrc          = regexp.MustCompile(`<img[^>]*\ssrc="([^"]+)"`)
-	reAnyImageURL      = regexp.MustCompile(`https?://[^"'\s]+\.(?:jpe?g|png|webp)`)
+	reAnyImageURL     = regexp.MustCompile(`https?://[^"'\s]+\.(?:jpe?g|png|webp)`)
 )
 
 // extractCover перебирает все известные атрибуты ленивой загрузки по приоритету, чтобы
-// не зависеть от точного названия атрибута, которое могло поменяться у сайта:
-// obычный <img src> часто содержит placeholder (прозрачный пиксель), поэтому он в конце списка.
+// не зависеть от точного названия атрибута, которое могло помениться у сайта:
+// обычный <img src> часто содержит placeholder (прозрачный пиксель), поэтому он в конце списка.
 func extractCover(chunk string) string {
 	if m := reImgDataSrc.FindStringSubmatch(chunk); len(m) >= 2 {
 		return m[1]
@@ -110,26 +113,21 @@ func extractCover(chunk string) string {
 	return ""
 }
 
-// extractEntityCardTiles разбивает секцию на карточки .entity-card-tile
-// (та же стратегия "разбить по маркерам", что и в parser_doramatv.go для
-// результатов поиска) и вытаскивает из каждой title/ссылку/обложку/рейтинг.
+// extractEntityCardTiles разбивает секцию на карточки .entity-card-tile.
+// Границы карточек — по началу тега <a ...class="entity-card-tile"...>
+// целиком (не по позиции "class=" внутри него), чтобы href, который может
+// стоять в теге раньше class, не терялся и не утекал в соседнюю карточку.
 func extractEntityCardTiles(section string) []HotDrama {
-	positions := reEntityTileMarker.FindAllStringIndex(section, -1)
+	tagMatches := reTileOpenTag.FindAllStringIndex(section, -1)
 	var out []HotDrama
 
-	for i, pos := range positions {
-		var chunk string
-		if i+1 < len(positions) {
-			chunk = section[pos[0]:positions[i+1][0]]
-		} else {
-			end := pos[0] + 4000
-			if end > len(section) {
-				end = len(section)
-			}
-			chunk = section[pos[0]:end]
-		}
+	for i, tag := range tagMatches {
+		tagStart, tagEnd := tag[0], tag[1]
+		tagText := section[tagStart:tagEnd]
 
-		hrefM := reHref.FindStringSubmatch(chunk)
+		// href достаём именно из самого тега <a>, а не из всего чанка контента —
+		// так он не может случайно оказаться ссылкой следующей карточки.
+		hrefM := reHref.FindStringSubmatch(tagText)
 		if len(hrefM) < 2 {
 			continue
 		}
@@ -138,22 +136,35 @@ func extractEntityCardTiles(section string) []HotDrama {
 			link = "https://m.doramatv.one" + link
 		}
 
+		// Контент карточки (título, картинка, рейтинг, жанры) — всё что после
+		// закрывающей '>' текущего тега <a> и до начала следующей карточки.
+		var content string
+		if i+1 < len(tagMatches) {
+			content = section[tagEnd:tagMatches[i+1][0]]
+		} else {
+			end := tagEnd + 4000
+			if end > len(section) {
+				end = len(section)
+			}
+			content = section[tagEnd:end]
+		}
+
 		title := "—"
-		if tm := reTileTitle.FindStringSubmatch(chunk); len(tm) >= 2 {
+		if tm := reTileTitle.FindStringSubmatch(content); len(tm) >= 2 {
 			title = strings.TrimSpace(tm[1])
 		}
 
-		cover := extractCover(chunk)
+		cover := extractCover(content)
 
 		var rating *float64
-		if rm := reCompactRate.FindStringSubmatch(chunk); len(rm) >= 2 {
+		if rm := reCompactRate.FindStringSubmatch(content); len(rm) >= 2 {
 			if v, err := strconv.ParseFloat(strings.TrimSpace(rm[1]), 64); err == nil {
 				rating = &v
 			}
 		}
 
 		var genres []string
-		for _, gm := range reGenre.FindAllStringSubmatch(chunk, -1) {
+		for _, gm := range reGenre.FindAllStringSubmatch(content, -1) {
 			if len(gm) >= 2 {
 				genres = append(genres, strings.TrimSpace(gm[1]))
 				if len(genres) >= 2 {
@@ -163,7 +174,7 @@ func extractEntityCardTiles(section string) []HotDrama {
 		}
 
 		ongoing := false
-		if pm := rePopover.FindStringSubmatch(chunk); len(pm) >= 2 {
+		if pm := rePopover.FindStringSubmatch(content); len(pm) >= 2 {
 			text := strings.ToLower(pm[1])
 			ongoing = strings.Contains(text, "выходит") || strings.Contains(text, "аирится")
 		}
