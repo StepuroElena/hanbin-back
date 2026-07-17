@@ -71,6 +71,7 @@ func main() {
 	log.Println("  POST /api/v1/profiles")
 	log.Println("  GET|PATCH|DELETE /api/v1/profiles/{id}")
 	log.Println("  GET /api/v1/users/me")
+	log.Println("  GET /api/v1/dramas/stats")
 	log.Printf("allowed origins: %v", origins)
 
 	if err := http.ListenAndServe(addr, httpHandler); err != nil {

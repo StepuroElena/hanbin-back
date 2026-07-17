@@ -21,4 +21,8 @@ type Repository interface {
 
 	// Update обновляет все редактируемые поля дорамы.
 	Update(ctx context.Context, d *Drama) error
+
+	// GetStatsByProfileID возвращает агрегированную статистику по статусам просмотра
+	// для дорам пользователя (не архивированных), одним SQL-запросом.
+	GetStatsByProfileID(ctx context.Context, profileID int64) (*Stats, error)
 }

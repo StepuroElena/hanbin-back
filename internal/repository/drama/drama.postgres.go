@@ -214,6 +214,35 @@ func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// GetStatsByProfileID считает агрегированную статистику по статусам одним запросом с COUNT...FILTER,
+// без выгрузки строк и без вычислений на стороне приложения. Архивированные дорамы исключены.
+func (r *postgresRepository) GetStatsByProfileID(ctx context.Context, profileID int64) (*domain.Stats, error) {
+	const q = `
+		SELECT
+			COUNT(*) FILTER (WHERE watch_status = 'completed') AS watched,
+			COUNT(*) FILTER (WHERE watch_status = 'watching')  AS watching,
+			COUNT(*) FILTER (WHERE watch_status = 'planned')   AS planned,
+			COUNT(*) FILTER (WHERE watch_status = 'dropped')   AS dropped
+		FROM dramas
+		WHERE profile_id = $1 AND is_archived = false`
+
+	var s domain.Stats
+	err := r.db.QueryRowContext(ctx, q, profileID).Scan(
+		&s.DramasWatched,
+		&s.DramasWatching,
+		&s.DramasPlanned,
+		&s.DramasDropped,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("drama repository.GetStatsByProfileID: %w", err)
+	}
+
+	s.TotalEpisodes = s.DramasWatched + s.DramasWatching
+	s.TotalHours = int(float64(s.TotalEpisodes) * 45 / 60)
+
+	return &s, nil
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────────────────
 
 type rowScanner interface {

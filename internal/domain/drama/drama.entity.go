@@ -268,6 +268,17 @@ func (d *Drama) Progress() Progress             { return d.progress }
 func (d *Drama) CreatedAt() time.Time           { return d.createdAt }
 func (d *Drama) UpdatedAt() time.Time           { return d.updatedAt }
 
+// Stats — агрегированная статистика дорам пользователя для карточек на главной.
+// Считается на бэке одним SQL-запросом (см. repository), фронт только отображает.
+type Stats struct {
+	DramasWatched  int // watch_status = completed
+	DramasWatching int // watch_status = watching
+	DramasPlanned  int // watch_status = planned
+	DramasDropped  int // watch_status = dropped
+	TotalEpisodes  int // dramasWatched + dramasWatching (кол-во дорам в активном прогрессе)
+	TotalHours     int // оценка: totalEpisodes * 45мин / 60
+}
+
 // ── Приватные сеттеры ─────────────────────────────────────────────────────────
 
 func (d *Drama) setTitle(title string) error {

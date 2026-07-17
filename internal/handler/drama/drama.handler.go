@@ -24,11 +24,15 @@ func NewHandler(service *svc.Service) *Handler {
 // RegisterRoutes регистрирует маршруты:
 //
 //	POST   /api/v1/dramas               — добавить дораму (требует JWT)
+//	GET    /api/v1/dramas/stats          — агрегированная статистика для карточек (требует JWT)
 //	PATCH  /api/v1/dramas/{id}/archive   — установить/снять архив (требует JWT)
 //	PATCH  /api/v1/dramas/{id}           — обновить дораму (требует JWT)
 //	DELETE /api/v1/dramas/{id}           — удалить дораму (is_archived=true, требует JWT)
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/v1/dramas", middleware.Auth(http.HandlerFunc(h.handleCollection)))
+	// ВАЖНО: регистрируется ДО "/api/v1/dramas/" — точный паттерн в Go 1.22+ mux
+	// имеет приоритет над "/api/v1/dramas/", поэтому "stats" не попадёт в handleItem как id.
+	mux.Handle("/api/v1/dramas/stats", middleware.Auth(http.HandlerFunc(h.Stats)))
 	mux.Handle("/api/v1/dramas/", middleware.Auth(http.HandlerFunc(h.handleItem)))
 }
 
@@ -182,6 +186,32 @@ func (h *Handler) SetArchived(w http.ResponseWriter, r *http.Request, dramaID in
 	}
 
 	out, err := h.service.SetArchived(r.Context(), profileID, dramaID, isArchived)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// Stats godoc
+//
+//	GET /api/v1/dramas/stats
+//	Header: Authorization: Bearer <token>
+//	200 OK  → StatsOutput (JSON)
+//	401 Unauthorized
+func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	out, err := h.service.GetStats(r.Context(), profileID)
 	if err != nil {
 		writeServiceError(w, err)
 		return

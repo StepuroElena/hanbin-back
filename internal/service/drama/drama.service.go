@@ -183,6 +183,34 @@ func (s *Service) GetAllByProfileID(ctx context.Context, profileID int64) ([]Dra
 	return out, nil
 }
 
+// StatsOutput — ответ эндпоинта GET /api/v1/dramas/stats.
+type StatsOutput struct {
+	DramasWatched  int `json:"dramas_watched"`
+	DramasWatching int `json:"dramas_watching"`
+	DramasPlanned  int `json:"dramas_planned"`
+	DramasDropped  int `json:"dramas_dropped"`
+	TotalEpisodes  int `json:"total_episodes"`
+	TotalHours     int `json:"total_hours"`
+}
+
+// GetStats возвращает агрегированную статистику дорам пользователя для карточек на главной.
+// Все подсчёты выполняются на бэке одним SQL-запросом — фронт только отображает готовые числа.
+func (s *Service) GetStats(ctx context.Context, profileID int64) (*StatsOutput, error) {
+	stats, err := s.repo.GetStatsByProfileID(ctx, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("service.GetStats: %w", err)
+	}
+
+	return &StatsOutput{
+		DramasWatched:  stats.DramasWatched,
+		DramasWatching: stats.DramasWatching,
+		DramasPlanned:  stats.DramasPlanned,
+		DramasDropped:  stats.DramasDropped,
+		TotalEpisodes:  stats.TotalEpisodes,
+		TotalHours:     stats.TotalHours,
+	}, nil
+}
+
 // SetArchived устанавливает флаг is_archived у дорамы.
 // Проверяет что дорама принадлежит profileID из токена.
 func (s *Service) SetArchived(ctx context.Context, profileID, dramaID int64, isArchived bool) (*DramaOutput, error) {
