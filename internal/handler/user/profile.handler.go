@@ -146,8 +146,20 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		"email":     profile.Email,
 		"dramas":    dramas,
 		"badges":    []any{},
-		"countries": countryBreakdown(dramas),
+		"countries": countryBreakdown(nonArchived(dramas)),
 	})
+}
+
+// nonArchived возвращает только не архивированные дорамы. Используется для всех агрегатов на главной
+// (разбивка по странам и т.п.) — архивные дорамы не должны влиять на статистику.
+func nonArchived(dramas []dramasvc.DramaOutput) []dramasvc.DramaOutput {
+	result := make([]dramasvc.DramaOutput, 0, len(dramas))
+	for _, d := range dramas {
+		if !d.IsArchived {
+			result = append(result, d)
+		}
+	}
+	return result
 }
 
 // countryEntry — одна строка разбивки по странам в ответе /users/me.
