@@ -216,29 +216,44 @@ func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
 
 // GetStatsByProfileID считает агрегированную статистику по статусам одним запросом с COUNT...FILTER,
 // без выгрузки строк и без вычислений на стороне приложения. Архивированные дорамы исключены.
+//
+// TotalHours теперь считается не приближённо (episodes*45мин), а точно: для каждой дорамы в статусе
+// «completed» берём episode_duration_min * (сумма episode_count по всем сезонам из seasons JSONB),
+// суммируем по всем дорамам и переводим в часы. Дорамы без указанной длительности/сезонов
+// просто не дают вклад (COALESCE в 0), а не ломают всю вычисление.
 func (r *postgresRepository) GetStatsByProfileID(ctx context.Context, profileID int64) (*domain.Stats, error) {
 	const q = `
 		SELECT
 			COUNT(*) FILTER (WHERE watch_status = 'completed') AS watched,
 			COUNT(*) FILTER (WHERE watch_status = 'watching')  AS watching,
 			COUNT(*) FILTER (WHERE watch_status = 'planned')   AS planned,
-			COUNT(*) FILTER (WHERE watch_status = 'dropped')   AS dropped
+			COUNT(*) FILTER (WHERE watch_status = 'dropped')   AS dropped,
+			COALESCE(SUM(
+				CASE WHEN watch_status = 'completed' THEN
+					COALESCE(episode_duration_min, 0) * COALESCE((
+						SELECT SUM(COALESCE((season->>'episode_count')::int, 0))
+						FROM jsonb_array_elements(COALESCE(seasons, '[]'::jsonb)) AS season
+					), 0)
+				ELSE 0 END
+			), 0) AS total_minutes_watched
 		FROM dramas
 		WHERE profile_id = $1 AND is_archived = false`
 
 	var s domain.Stats
+	var totalMinutesWatched int64
 	err := r.db.QueryRowContext(ctx, q, profileID).Scan(
 		&s.DramasWatched,
 		&s.DramasWatching,
 		&s.DramasPlanned,
 		&s.DramasDropped,
+		&totalMinutesWatched,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("drama repository.GetStatsByProfileID: %w", err)
 	}
 
 	s.TotalEpisodes = s.DramasWatched + s.DramasWatching
-	s.TotalHours = int(float64(s.TotalEpisodes) * 45 / 60)
+	s.TotalHours = int(totalMinutesWatched / 60)
 
 	return &s, nil
 }
