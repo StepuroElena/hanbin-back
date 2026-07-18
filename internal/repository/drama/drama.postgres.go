@@ -258,6 +258,48 @@ func (r *postgresRepository) GetStatsByProfileID(ctx context.Context, profileID 
 	return &s, nil
 }
 
+// GetFacetsByProfileID возвращает реально используемые страны и жанры — два DISTINCT-запроса,
+// чтобы фильтры на главной показывали только то, что реально есть у пользователя.
+func (r *postgresRepository) GetFacetsByProfileID(ctx context.Context, profileID int64) (*domain.Facets, error) {
+	const countriesQ = `
+		SELECT DISTINCT country FROM dramas
+		WHERE profile_id = $1 AND is_archived = false AND country <> ''
+		ORDER BY country`
+	const genresQ = `
+		SELECT DISTINCT genre FROM dramas
+		WHERE profile_id = $1 AND is_archived = false AND genre <> ''
+		ORDER BY genre`
+
+	countries, err := r.queryDistinctStrings(ctx, countriesQ, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("drama repository.GetFacetsByProfileID countries: %w", err)
+	}
+	genres, err := r.queryDistinctStrings(ctx, genresQ, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("drama repository.GetFacetsByProfileID genres: %w", err)
+	}
+
+	return &domain.Facets{Countries: countries, Genres: genres}, nil
+}
+
+func (r *postgresRepository) queryDistinctStrings(ctx context.Context, query string, profileID int64) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, query, profileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := []string{}
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		result = append(result, v)
+	}
+	return result, rows.Err()
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────────────────
 
 type rowScanner interface {

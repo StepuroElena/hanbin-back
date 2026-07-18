@@ -276,7 +276,14 @@ type Stats struct {
 	DramasPlanned  int // watch_status = planned
 	DramasDropped  int // watch_status = dropped
 	TotalEpisodes  int // dramasWatched + dramasWatching (кол-во дорам в активном прогрессе)
-	TotalHours     int // оценка: totalEpisodes * 45мин / 60
+	TotalHours     int // точная сумма по completed-дорамам: episode_duration_min * (сумма серий по сезонам), в часах
+}
+
+// Facets — реально используемые значения стран/жанров в дорамах пользователя —
+// для фильтров на главной (чтобы не показывать чипы без данных).
+type Facets struct {
+	Countries []string
+	Genres    []string
 }
 
 // ── Приватные сеттеры ─────────────────────────────────────────────────────────

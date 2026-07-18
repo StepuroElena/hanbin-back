@@ -211,6 +211,25 @@ func (s *Service) GetStats(ctx context.Context, profileID int64) (*StatsOutput, 
 	}, nil
 }
 
+// FacetsOutput — ответ эндпоинта GET /api/v1/dramas/facets.
+type FacetsOutput struct {
+	Countries []string `json:"countries"`
+	Genres    []string `json:"genres"`
+}
+
+// GetFacets возвращает реально используемые страны и жанры — для фильтров на главной.
+func (s *Service) GetFacets(ctx context.Context, profileID int64) (*FacetsOutput, error) {
+	facets, err := s.repo.GetFacetsByProfileID(ctx, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("service.GetFacets: %w", err)
+	}
+
+	return &FacetsOutput{
+		Countries: facets.Countries,
+		Genres:    facets.Genres,
+	}, nil
+}
+
 // SetArchived устанавливает флаг is_archived у дорамы.
 // Проверяет что дорама принадлежит profileID из токена.
 func (s *Service) SetArchived(ctx context.Context, profileID, dramaID int64, isArchived bool) (*DramaOutput, error) {

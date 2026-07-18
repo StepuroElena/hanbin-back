@@ -25,4 +25,9 @@ type Repository interface {
 	// GetStatsByProfileID возвращает агрегированную статистику по статусам просмотра
 	// для дорам пользователя (не архивированных), одним SQL-запросом.
 	GetStatsByProfileID(ctx context.Context, profileID int64) (*Stats, error)
+
+	// GetFacetsByProfileID возвращает список реально используемых стран и жанров в дорамах
+	// пользователя (не архивированных) — для фильтров на главной: чтобы не показывать
+	// чипы стран/жанров, которых ни у одной дорамы нет.
+	GetFacetsByProfileID(ctx context.Context, profileID int64) (*Facets, error)
 }

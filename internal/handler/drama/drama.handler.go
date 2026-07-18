@@ -31,8 +31,9 @@ func NewHandler(service *svc.Service) *Handler {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/v1/dramas", middleware.Auth(http.HandlerFunc(h.handleCollection)))
 	// ВАЖНО: регистрируется ДО "/api/v1/dramas/" — точный паттерн в Go 1.22+ mux
-	// имеет приоритет над "/api/v1/dramas/", поэтому "stats" не попадёт в handleItem как id.
+	// имеет приоритет над "/api/v1/dramas/", поэтому "stats"/"facets" не попадут в handleItem как id.
 	mux.Handle("/api/v1/dramas/stats", middleware.Auth(http.HandlerFunc(h.Stats)))
+	mux.Handle("/api/v1/dramas/facets", middleware.Auth(http.HandlerFunc(h.Facets)))
 	mux.Handle("/api/v1/dramas/", middleware.Auth(http.HandlerFunc(h.handleItem)))
 }
 
@@ -212,6 +213,35 @@ func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := h.service.GetStats(r.Context(), profileID)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// Facets godoc
+//
+//	GET /api/v1/dramas/facets
+//	Header: Authorization: Bearer <token>
+//	200 OK  → FacetsOutput (JSON: { countries: [...], genres: [...] })
+//	401 Unauthorized
+//
+// Возвращает только реально используемые значения стран/жанров — фронт использует это для
+// динамического построения чипов фильтров вместо хардкодного списка.
+func (h *Handler) Facets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	out, err := h.service.GetFacets(r.Context(), profileID)
 	if err != nil {
 		writeServiceError(w, err)
 		return
