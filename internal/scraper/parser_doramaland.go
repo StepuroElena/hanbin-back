@@ -123,7 +123,7 @@ func (p *doramalandParser) bestSearchResult(body, queryTitle string) (string, bo
 	qTokens := tokenize(queryTitle)
 
 	best := candidates[0]
-	bestScore := -1
+	bestRatio := 0.0
 
 	for _, c := range candidates {
 		// Точное совпадение
@@ -131,24 +131,36 @@ func (p *doramalandParser) bestSearchResult(body, queryTitle string) (string, bo
 			return c.url, true
 		}
 
-		score := 0
-		// Совпадение токенов: EN-альтернативные названия через "/"
+		// Считаем долю совпавших токенов относительно запроса (0..1), а не абсолютный счёт.
+		// Абсолютный счёт с порогом ">0" раньше пропускал совпадение всего по одному случайному
+		// токену, из-за чего при поиске однословного названия (напр. «Гоблин»), которого на сайте нет,
+		// возвращалась совершенно нерелевантная дорама вместо честного «не найдено».
+		var enTokensAll []string
 		for _, enPart := range strings.Split(c.enName, "/") {
-			score += tokenOverlap(qTokens, tokenize(enPart)) * 3
+			enTokensAll = append(enTokensAll, tokenize(enPart)...)
 		}
-		score += tokenOverlap(qTokens, tokenize(c.ruName))
+		ruTokens := tokenize(c.ruName)
 
-		if strings.Contains(normTitle(c.enName), qNorm) {
-			score += 10
+		overlap := tokenOverlap(qTokens, enTokensAll) + tokenOverlap(qTokens, ruTokens)
+		ruRatio := 0.0
+		if len(qTokens) > 0 {
+			ruRatio = float64(overlap) / float64(len(qTokens))
 		}
 
-		if score > bestScore {
-			bestScore = score
+		// Вхождение запроса как подстроки в названии — считаем как полное совпадение.
+		if strings.Contains(normTitle(c.enName), qNorm) || strings.Contains(normTitle(c.ruName), qNorm) {
+			ruRatio = 1.0
+		}
+
+		if ruRatio > bestRatio {
+			bestRatio = ruRatio
 			best = c
 		}
 	}
 
-	if bestScore <= 0 {
+	// Требуем совпадение минимум половины слов запроса (или точное вхождение подстроки) —
+	// иначе честно говорим «не найдено», а не подсовываем первую попавшуюся нерелевантную дораму.
+	if bestRatio < 0.5 {
 		return "", false
 	}
 	return best.url, true

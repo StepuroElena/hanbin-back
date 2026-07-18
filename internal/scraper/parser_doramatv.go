@@ -113,33 +113,37 @@ func (p *doramatvParser) bestResultURL(body, queryTitle string) (string, bool) {
 	qTokens := tokenize(queryTitle)
 
 	best := candidates[0]
-	bestScore := -1
+	bestRatio := 0.0
 
 	for _, c := range candidates {
-		score := 0
 
 		// Точное совпадение (без учёта регистра)
 		if normTitle(c.enName) == qNorm || normTitle(c.ruName) == qNorm {
 			return "https://m.doramatv.one" + c.path, true
 		}
 
-		// Считаем общие токены с en-названием (приоритет) и ru-названием
-		score += tokenOverlap(qTokens, tokenize(c.enName)) * 3
-		score += tokenOverlap(qTokens, tokenize(c.ruName))
+		// Доля совпавших токенов относительно запроса (0..1) — абсолютный счёт с порогом ">0"
+		// раньше засчитывал совпадение всего по одному случайному токену и возвращал нерелевантные результаты.
+		overlap := tokenOverlap(qTokens, tokenize(c.enName))*3 + tokenOverlap(qTokens, tokenize(c.ruName))
+		maxPossible := len(qTokens) * 4 // вес en (x3) + ru (x1) на каждый токен запроса
+		ruRatio := 0.0
+		if maxPossible > 0 {
+			ruRatio = float64(overlap) / float64(maxPossible)
+		}
 
 		// Бонус если en-название содержит запрос как подстроку
 		if strings.Contains(normTitle(c.enName), qNorm) {
-			score += 10
+			ruRatio = 1.0
 		}
 
-		if score > bestScore {
-			bestScore = score
+		if ruRatio > bestRatio {
+			bestRatio = ruRatio
 			best = c
 		}
 	}
 
-	// Минимальный порог: хотя бы одно общее слово
-	if bestScore <= 0 {
+	// Минимальный порог: требуем существенное совпадение, а не любое положительное число.
+	if bestRatio < 0.4 {
 		return "", false
 	}
 
