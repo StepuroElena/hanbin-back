@@ -40,6 +40,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 // handleCollection — диспетчер для /api/v1/dramas
 func (h *Handler) handleCollection(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
+	case http.MethodGet:
+		h.List(w, r)
 	case http.MethodPost:
 		h.Create(w, r)
 	default:
@@ -88,6 +90,31 @@ func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeError(w, http.StatusNotFound, "not found")
+}
+
+// List godoc
+//
+//	GET /api/v1/dramas
+//	Header: Authorization: Bearer <token>
+//	200 OK  → []DramaOutput (JSON)
+//	401 Unauthorized
+//
+// Список всех дорам пользователя (включая архивированные — фронт сам фильтрует по is_archived).
+// Это актуальный источник данных для списка на главной — в отличие от старого /api/v1/users/me,
+// который читает из другой, устаревшей доменной модели без seasons/episode_duration_min и т.д.
+func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	out, err := h.service.GetAllByProfileID(r.Context(), profileID)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // Create godoc

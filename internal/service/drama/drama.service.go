@@ -112,6 +112,10 @@ type DramaOutput struct {
 	Voiceover          string         `json:"voiceover"`
 	PosterURL          string         `json:"poster_url"`
 	Seasons            []SeasonOutput `json:"seasons"`
+	// TotalEpisodes/CurrentEpisode — удобные плоские числа для фронта, считаются тут же, на бэке —
+	// сумма episode_count по всем сезонам и текущий эпизод из progress соответственно.
+	TotalEpisodes      int            `json:"total_episodes"`
+	CurrentEpisode     int            `json:"current_episode"`
 	Progress           ProgressOutput `json:"progress"`
 	CreatedAt          string         `json:"created_at"`
 	UpdatedAt          string         `json:"updated_at"`
@@ -169,7 +173,7 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 	return &out, nil
 }
 
-// GetAllByProfileID возвращает все дорамы пользователя — используется в /users/me.
+// GetAllByProfileID возвращает все дорамы пользователя — используется в GET /api/v1/dramas (список на главной).
 func (s *Service) GetAllByProfileID(ctx context.Context, profileID int64) ([]DramaOutput, error) {
 	dramas, err := s.repo.GetAllByProfileID(ctx, profileID)
 	if err != nil {
@@ -448,6 +452,11 @@ func toOutput(d *domain.Drama) DramaOutput {
 		})
 	}
 
+	totalEpisodes := 0
+	for _, s := range seasons {
+		totalEpisodes += s.EpisodeCount
+	}
+
 	return DramaOutput{
 		ID:             d.ID(),
 		ProfileID:      d.ProfileID(),
@@ -465,6 +474,8 @@ func toOutput(d *domain.Drama) DramaOutput {
 		Voiceover:      d.Voiceover(),
 		PosterURL:      d.PosterURL(),
 		Seasons:        seasons,
+		TotalEpisodes:  totalEpisodes,
+		CurrentEpisode: prog.CurrentEpisode,
 		Progress: ProgressOutput{
 			CurrentEpisode: prog.CurrentEpisode,
 			Seasons:        progressSeasons,
