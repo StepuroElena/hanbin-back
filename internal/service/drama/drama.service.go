@@ -41,6 +41,7 @@ type ProgressOutput struct {
 type CreateInput struct {
 	Title          string   `json:"title"`
 	WatchURL       string   `json:"watch_url"`
+	SourceURL      string   `json:"source_url"`      // опционально, точная ссылка на страницу дорамы у источника
 	ReleaseYear    int      `json:"release_year"`
 	ReleaseTag     string   `json:"release_tag"`     // "ongoing" | "released"
 	TranslationTag string   `json:"translation_tag"` // "translated" | "translating"
@@ -79,6 +80,7 @@ type ProgressInput struct {
 type UpdateInput struct {
 	Title              *string        `json:"title"`
 	WatchURL           *string        `json:"watch_url"`
+	SourceURL          *string        `json:"source_url"` // null = не менять, "" = очистить
 	ReleaseYear        *int           `json:"release_year"`
 	ReleaseTag         *string        `json:"release_tag"`
 	TranslationTag     *string        `json:"translation_tag"`
@@ -100,6 +102,7 @@ type DramaOutput struct {
 	ProfileID          int64          `json:"profile_id"`
 	Title              string         `json:"title"`
 	WatchURL           string         `json:"watch_url"`
+	SourceURL          string         `json:"source_url"`
 	ReleaseYear        int            `json:"release_year"`
 	ReleaseTag         string         `json:"release_tag"`
 	TranslationTag     string         `json:"translation_tag"`
@@ -139,6 +142,7 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 		profileID,
 		in.Title,
 		in.WatchURL,
+		in.SourceURL,
 		in.ReleaseYear,
 		releaseTag,
 		translationTag,
@@ -160,6 +164,7 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 	out := toOutput(domain.Reconstitute(
 		id, profileID,
 		d.Title(), d.WatchURL(),
+		d.SourceURL(),
 		d.ReleaseYear(),
 		d.ReleaseTag(), d.TranslationTag(),
 		d.Genre(), d.Rating(),
@@ -234,6 +239,21 @@ func (s *Service) GetFacets(ctx context.Context, profileID int64) (*FacetsOutput
 	}, nil
 }
 
+// GetByID возвращает полную информацию по одной дораме — используется модалкой
+// редактирования ссылок в табличном/карточном виде (GET /api/v1/dramas/{id}).
+// Проверяет, что дорама принадлежит profileID из токена.
+func (s *Service) GetByID(ctx context.Context, profileID, dramaID int64) (*DramaOutput, error) {
+	d, err := s.repo.GetByID(ctx, dramaID)
+	if err != nil {
+		return nil, fmt.Errorf("service.GetByID: %w", err)
+	}
+	if d.ProfileID() != profileID {
+		return nil, fmt.Errorf("service.GetByID: %w", domain.ErrNotFound)
+	}
+	out := toOutput(d)
+	return &out, nil
+}
+
 // SetArchived устанавливает флаг is_archived у дорамы.
 // Проверяет что дорама принадлежит profileID из токена.
 func (s *Service) SetArchived(ctx context.Context, profileID, dramaID int64, isArchived bool) (*DramaOutput, error) {
@@ -272,6 +292,7 @@ func (s *Service) Update(ctx context.Context, profileID, dramaID int64, in Updat
 	// Применяем изменения поверх текущего состояния
 	title          := d.Title()
 	watchURL       := d.WatchURL()
+	sourceURL      := d.SourceURL()
 	releaseYear    := d.ReleaseYear()
 	releaseTag     := d.ReleaseTag()
 	translTag      := d.TranslationTag()
@@ -290,6 +311,9 @@ func (s *Service) Update(ctx context.Context, profileID, dramaID int64, in Updat
 	}
 	if in.WatchURL != nil {
 		watchURL = *in.WatchURL
+	}
+	if in.SourceURL != nil {
+		sourceURL = *in.SourceURL
 	}
 	if in.ReleaseYear != nil {
 		releaseYear = *in.ReleaseYear
@@ -366,6 +390,7 @@ func (s *Service) Update(ctx context.Context, profileID, dramaID int64, in Updat
 	updated := domain.Reconstitute(
 		d.ID(), d.ProfileID(),
 		title, watchURL,
+		sourceURL,
 		releaseYear,
 		releaseTag, translTag,
 		genre, rating,
@@ -462,6 +487,7 @@ func toOutput(d *domain.Drama) DramaOutput {
 		ProfileID:      d.ProfileID(),
 		Title:          d.Title(),
 		WatchURL:       d.WatchURL(),
+		SourceURL:      d.SourceURL(),
 		ReleaseYear:    d.ReleaseYear(),
 		ReleaseTag:     string(d.ReleaseTag()),
 		TranslationTag: string(d.TranslationTag()),

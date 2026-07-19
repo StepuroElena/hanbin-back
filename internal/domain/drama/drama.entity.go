@@ -118,6 +118,7 @@ type Drama struct {
 	profileID           int64
 	title               string
 	watchURL            string
+	sourceURL           string // "" = не указана, точная ссылка на страницу дорамы у источника, вводится вручную
 	releaseYear         int
 	releaseTag          ReleaseTag
 	translationTag      TranslationTag
@@ -141,6 +142,7 @@ func NewDrama(
 	profileID int64,
 	title string,
 	watchURL string,
+	sourceURL string,
 	releaseYear int,
 	releaseTag ReleaseTag,
 	translationTag TranslationTag,
@@ -166,6 +168,7 @@ func NewDrama(
 	if err := d.setWatchURL(watchURL); err != nil {
 		return nil, err
 	}
+	d.sourceURL = strings.TrimSpace(sourceURL)
 	if err := d.setReleaseYear(releaseYear); err != nil {
 		return nil, err
 	}
@@ -202,6 +205,7 @@ func NewDrama(
 func Reconstitute(
 	id, profileID int64,
 	title, watchURL string,
+	sourceURL string,
 	releaseYear int,
 	releaseTag ReleaseTag,
 	translationTag TranslationTag,
@@ -228,6 +232,7 @@ func Reconstitute(
 		profileID:          profileID,
 		title:              title,
 		watchURL:           watchURL,
+		sourceURL:          sourceURL,
 		releaseYear:        releaseYear,
 		releaseTag:         releaseTag,
 		translationTag:     translationTag,
@@ -252,6 +257,7 @@ func (d *Drama) ID() int64                      { return d.id }
 func (d *Drama) ProfileID() int64               { return d.profileID }
 func (d *Drama) Title() string                  { return d.title }
 func (d *Drama) WatchURL() string               { return d.watchURL }
+func (d *Drama) SourceURL() string              { return d.sourceURL }
 func (d *Drama) ReleaseYear() int               { return d.releaseYear }
 func (d *Drama) ReleaseTag() ReleaseTag         { return d.releaseTag }
 func (d *Drama) TranslationTag() TranslationTag { return d.translationTag }

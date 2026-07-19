@@ -25,6 +25,7 @@ func NewHandler(service *svc.Service) *Handler {
 //
 //	POST   /api/v1/dramas               — добавить дораму (требует JWT)
 //	GET    /api/v1/dramas/stats          — агрегированная статистика для карточек (требует JWT)
+//	GET    /api/v1/dramas/{id}           — полная информация по одной дораме (требует JWT)
 //	PATCH  /api/v1/dramas/{id}/archive   — установить/снять архив (требует JWT)
 //	PATCH  /api/v1/dramas/{id}           — обновить дораму (требует JWT)
 //	DELETE /api/v1/dramas/{id}           — удалить дораму (is_archived=true, требует JWT)
@@ -63,6 +64,8 @@ func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		switch r.Method {
+		case http.MethodGet:
+			h.GetOne(w, r, id)
 		case http.MethodPatch:
 			h.UpdateDrama(w, r, id)
 		case http.MethodDelete:
@@ -144,6 +147,33 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
+}
+
+// GetOne godoc
+//
+//	GET /api/v1/dramas/{id}
+//	Header: Authorization: Bearer <token>
+//	200 OK  → DramaOutput (JSON)
+//	401 Unauthorized
+//	404 Not Found
+//
+// Возвращает полную информацию по одной дораме — используется модалкой редактирования
+// ссылок (сайт + точная ссылка на страницу дорамы) в табличном/карточном виде: перед
+// открытием модалки фронт делает отдельный запрос сюда, а не переиспользует данные из
+// уже отрендеренного списка.
+func (h *Handler) GetOne(w http.ResponseWriter, r *http.Request, dramaID int64) {
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	out, err := h.service.GetByID(r.Context(), profileID, dramaID)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // UpdateDrama godoc

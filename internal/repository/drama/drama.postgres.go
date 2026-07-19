@@ -32,17 +32,17 @@ func (r *postgresRepository) Create(ctx context.Context, d *domain.Drama) (int64
 
 	const q = `
 		INSERT INTO dramas (
-			profile_id, title, watch_url, release_year,
+			profile_id, title, watch_url, source_url, release_year,
 			release_tag, translation_tag, genre, rating,
 			watch_status, country,
 			is_archived, episode_duration_min, voiceover, poster_url, seasons, progress,
 			created_at, updated_at
 		) VALUES (
-			$1,  $2,  $3,  $4,
-			$5,  $6,  $7,  $8,
-			$9,  $10,
-			$11, $12, $13, $14, $15, $16,
-			$17, $18
+			$1,  $2,  $3,  $4,  $5,
+			$6,  $7,  $8,  $9,
+			$10, $11,
+			$12, $13, $14, $15, $16, $17,
+			$18, $19
 		) RETURNING id`
 
 	var id int64
@@ -50,6 +50,7 @@ func (r *postgresRepository) Create(ctx context.Context, d *domain.Drama) (int64
 		d.ProfileID(),
 		d.Title(),
 		d.WatchURL(),
+		d.SourceURL(),
 		d.ReleaseYear(),
 		string(d.ReleaseTag()),
 		string(d.TranslationTag()),
@@ -75,7 +76,7 @@ func (r *postgresRepository) Create(ctx context.Context, d *domain.Drama) (int64
 
 func (r *postgresRepository) GetAllByProfileID(ctx context.Context, profileID int64) ([]*domain.Drama, error) {
 	const q = `
-		SELECT id, profile_id, title, watch_url, release_year,
+		SELECT id, profile_id, title, watch_url, source_url, release_year,
 		       release_tag, translation_tag, genre, rating,
 		       watch_status, country,
 		       is_archived, episode_duration_min, voiceover, poster_url, seasons, progress,
@@ -106,7 +107,7 @@ func (r *postgresRepository) GetAllByProfileID(ctx context.Context, profileID in
 
 func (r *postgresRepository) GetByID(ctx context.Context, id int64) (*domain.Drama, error) {
 	const q = `
-		SELECT id, profile_id, title, watch_url, release_year,
+		SELECT id, profile_id, title, watch_url, source_url, release_year,
 		       release_tag, translation_tag, genre, rating,
 		       watch_status, country,
 		       is_archived, episode_duration_min, voiceover, poster_url, seasons, progress,
@@ -151,24 +152,26 @@ func (r *postgresRepository) Update(ctx context.Context, d *domain.Drama) error 
 		UPDATE dramas SET
 			title                = $1,
 			watch_url            = $2,
-			release_year         = $3,
-			release_tag          = $4,
-			translation_tag      = $5,
-			genre                = $6,
-			rating               = $7,
-			watch_status         = $8,
-			country              = $9,
-			episode_duration_min = $10,
-			voiceover            = $11,
-			poster_url           = $12,
-			seasons              = $13,
-			progress             = $14,
-			updated_at           = $15
-		WHERE id = $16`
+			source_url           = $3,
+			release_year         = $4,
+			release_tag          = $5,
+			translation_tag      = $6,
+			genre                = $7,
+			rating               = $8,
+			watch_status         = $9,
+			country              = $10,
+			episode_duration_min = $11,
+			voiceover            = $12,
+			poster_url           = $13,
+			seasons              = $14,
+			progress             = $15,
+			updated_at           = $16
+		WHERE id = $17`
 
 	res, err := r.db.ExecContext(ctx, q,
 		d.Title(),
 		d.WatchURL(),
+		d.SourceURL(),
 		d.ReleaseYear(),
 		string(d.ReleaseTag()),
 		string(d.TranslationTag()),
@@ -312,6 +315,7 @@ func scanDrama(row rowScanner) (*domain.Drama, error) {
 		profileID          int64
 		title              string
 		watchURL           string
+		sourceURL          sql.NullString
 		releaseYear        int
 		releaseTagStr      string
 		translTagStr       string
@@ -330,7 +334,7 @@ func scanDrama(row rowScanner) (*domain.Drama, error) {
 	)
 
 	if err := row.Scan(
-		&id, &profileID, &title, &watchURL, &releaseYear,
+		&id, &profileID, &title, &watchURL, &sourceURL, &releaseYear,
 		&releaseTagStr, &translTagStr, &genre, &rating,
 		&watchStatusStr, &country,
 		&isArchived, &episodeDurationMin, &voiceover, &posterURL, &seasonsJSON, &progressJSON,
@@ -371,6 +375,7 @@ func scanDrama(row rowScanner) (*domain.Drama, error) {
 	return domain.Reconstitute(
 		id, profileID,
 		title, watchURL,
+		sourceURL.String,
 		releaseYear,
 		domain.ReleaseTag(releaseTagStr),
 		domain.TranslationTag(translTagStr),
