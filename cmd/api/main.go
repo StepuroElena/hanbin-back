@@ -9,18 +9,21 @@ import (
 
 	_ "github.com/lib/pq"
 
-	authhandler    "github.com/hanbin/hanbin-back/internal/handler/auth"
-	dramahandler   "github.com/hanbin/hanbin-back/internal/handler/drama"
-	scraperhandler "github.com/hanbin/hanbin-back/internal/handler/scraper"
-	userhandler    "github.com/hanbin/hanbin-back/internal/handler/user"
+	authhandler          "github.com/hanbin/hanbin-back/internal/handler/auth"
+	dramahandler         "github.com/hanbin/hanbin-back/internal/handler/drama"
+	scraperhandler       "github.com/hanbin/hanbin-back/internal/handler/scraper"
+	streamingsitehandler "github.com/hanbin/hanbin-back/internal/handler/streamingsite"
+	userhandler          "github.com/hanbin/hanbin-back/internal/handler/user"
 	"github.com/hanbin/hanbin-back/internal/middleware"
-	dramarepo "github.com/hanbin/hanbin-back/internal/repository/drama"
-	scrapecacherepo "github.com/hanbin/hanbin-back/internal/repository/scrapecache"
-	userrepo  "github.com/hanbin/hanbin-back/internal/repository/user"
-	authsvc  "github.com/hanbin/hanbin-back/internal/service/auth"
-	dramasvc "github.com/hanbin/hanbin-back/internal/service/drama"
-	scrapersvc "github.com/hanbin/hanbin-back/internal/service/scraper"
-	usersvc  "github.com/hanbin/hanbin-back/internal/service/user"
+	dramarepo         "github.com/hanbin/hanbin-back/internal/repository/drama"
+	scrapecacherepo   "github.com/hanbin/hanbin-back/internal/repository/scrapecache"
+	streamingsiterepo "github.com/hanbin/hanbin-back/internal/repository/streamingsite"
+	userrepo          "github.com/hanbin/hanbin-back/internal/repository/user"
+	authsvc          "github.com/hanbin/hanbin-back/internal/service/auth"
+	dramasvc         "github.com/hanbin/hanbin-back/internal/service/drama"
+	scrapersvc       "github.com/hanbin/hanbin-back/internal/service/scraper"
+	streamingsitesvc "github.com/hanbin/hanbin-back/internal/service/streamingsite"
+	usersvc          "github.com/hanbin/hanbin-back/internal/service/user"
 )
 
 func main() {
@@ -39,22 +42,27 @@ func main() {
 	}
 	log.Println("connected to database")
 
-// ── Dependency Injection ──────────────────────────────────────────────────
-	userRepo  := userrepo.NewPostgresRepository(db)
-	dramaRepo := dramarepo.NewPostgresRepository(db)
-	scrapeCacheRepo := scrapecacherepo.NewPostgresRepository(db)
+	// ── Dependency Injection ──────────────────────────────────────────────────
+	userRepo          := userrepo.NewPostgresRepository(db)
+	dramaRepo         := dramarepo.NewPostgresRepository(db)
+	scrapeCacheRepo   := scrapecacherepo.NewPostgresRepository(db)
+	streamingSiteRepo := streamingsiterepo.NewPostgresRepository(db)
 	userService  := usersvc.NewService(userRepo)
 	dramaService := dramasvc.NewService(dramaRepo)
 	authService  := authsvc.NewService(userRepo)
-	scrapeService := scrapersvc.NewService(scrapeCacheRepo) // гибрид: cache-aside с TTL поверх internal/scraper
-	userHandler   := userhandler.NewHandler(userService, dramaService)
-	dramaHandler  := dramahandler.NewHandler(dramaService)
-	authHandler   := authhandler.NewHandler(authService)
-	scrapeHandler := scraperhandler.NewHandler(scrapeService)
+	scrapeService        := scrapersvc.NewService(scrapeCacheRepo) // гибрид: cache-aside с TTL поверх internal/scraper
+	streamingSiteService := streamingsitesvc.NewService(streamingSiteRepo)
+	userHandler          := userhandler.NewHandler(userService, dramaService)
+	dramaHandler         := dramahandler.NewHandler(dramaService)
+	authHandler          := authhandler.NewHandler(authService)
+	scrapeHandler        := scraperhandler.NewHandler(scrapeService)
+	streamingSiteHandler := streamingsitehandler.NewHandler(streamingSiteService)
+
 	// ── Routing ───────────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
-	authHandler.RegisterRoutes(mux)   // POST /api/v1/auth/register, /api/v1/auth/login
-	userHandler.RegisterRoutes(mux)   // GET  /api/v1/users/me, /api/v1/profiles/...
+	authHandler.RegisterRoutes(mux)          // POST /api/v1/auth/register, /api/v1/auth/login
+	userHandler.RegisterRoutes(mux)          // GET  /api/v1/users/me, /api/v1/profiles/...
+	streamingSiteHandler.RegisterRoutes(mux) // GET|POST /api/v1/streaming-sites, PATCH|DELETE /api/v1/streaming-sites/{id}
 
 	// ВАЖНО: scrapeHandler регистрируется ДО dramaHandler.
 	// Паттерн "GET /api/v1/dramas/scrape" точнее, чем "/api/v1/dramas/",
@@ -72,6 +80,8 @@ func main() {
 	log.Println("  GET|PATCH|DELETE /api/v1/profiles/{id}")
 	log.Println("  GET /api/v1/users/me")
 	log.Println("  GET /api/v1/dramas/stats")
+	log.Println("  GET|POST /api/v1/streaming-sites")
+	log.Println("  PATCH|DELETE /api/v1/streaming-sites/{id}")
 	log.Printf("allowed origins: %v", origins)
 
 	if err := http.ListenAndServe(addr, httpHandler); err != nil {
