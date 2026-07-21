@@ -26,6 +26,7 @@ type defaultSite struct {
 // defaultSites — тот же список, что раньше был захардкожен во фронте (STREAMING_SITES
 // в AddDramaModal.js). Сажается лениво в GetAllByProfileID, если у профиля ещё нет ни одного сайта —
 // так подхватываются и новые регистрации, и уже существующие профили без миграции данных.
+// Все дефолтные сайты создаются включёнными (enabled=true) — см. domain.NewStreamingSite.
 var defaultSites = []defaultSite{
 	{name: "DoramaTV", url: "https://m.doramatv.one", language: domain.LanguageRU},
 	{name: "Dorama.land", url: "https://dorama.land", language: domain.LanguageRU},
@@ -48,6 +49,7 @@ type SiteOutput struct {
 	URL      string `json:"url"`
 	Language string `json:"language"`
 	Position int    `json:"position"`
+	Enabled  bool   `json:"enabled"`
 }
 
 // CreateInput — тело запроса на добавление собственного сайта.
@@ -63,6 +65,7 @@ type UpdateInput struct {
 	URL      *string `json:"url"`
 	Language *string `json:"language"`
 	Position *int    `json:"position"`
+	Enabled  *bool   `json:"enabled"`
 }
 
 // ── Use cases ─────────────────────────────────────────────────────────────────
@@ -92,7 +95,7 @@ func (s *Service) GetAllByProfileID(ctx context.Context, profileID int64) ([]Sit
 	return out, nil
 }
 
-// Create добавляет пользователю собственный сайт (за пределами дефолтного набора).
+// Create добавляет пользователю собственный сайт (за пределами дефолтного набора). Включён по умолчанию.
 func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (*SiteOutput, error) {
 	language, err := domain.ParseLanguage(in.Language)
 	if err != nil {
@@ -115,7 +118,7 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
 
-	out := toOutput(domain.Reconstitute(id, profileID, site.Name(), site.URL(), site.Language(), site.Position(), site.CreatedAt(), site.UpdatedAt()))
+	out := toOutput(domain.Reconstitute(id, profileID, site.Name(), site.URL(), site.Language(), site.Position(), site.Enabled(), site.CreatedAt(), site.UpdatedAt()))
 	return &out, nil
 }
 
@@ -150,6 +153,9 @@ func (s *Service) Update(ctx context.Context, profileID, siteID int64, in Update
 	}
 	if in.Position != nil {
 		site.SetPosition(*in.Position)
+	}
+	if in.Enabled != nil {
+		site.SetEnabled(*in.Enabled)
 	}
 
 	if err := s.repo.Update(ctx, site); err != nil {
@@ -197,5 +203,6 @@ func toOutput(s *domain.StreamingSite) SiteOutput {
 		URL:      s.URL(),
 		Language: string(s.Language()),
 		Position: s.Position(),
+		Enabled:  s.Enabled(),
 	}
 }

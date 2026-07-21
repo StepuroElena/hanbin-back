@@ -39,17 +39,18 @@ type StreamingSite struct {
 	url       string
 	language  Language
 	position  int
+	enabled   bool
 	createdAt time.Time
 	updatedAt time.Time
 }
 
-// NewStreamingSite создаёт новый валидный StreamingSite (без сохранения в БД).
+// NewStreamingSite создаёт новый валидный StreamingSite (без сохранения в БД). Включён по умолчанию.
 func NewStreamingSite(profileID int64, name, url string, language Language, position int) (*StreamingSite, error) {
 	if profileID <= 0 {
 		return nil, ErrProfileIDRequired
 	}
 
-	s := &StreamingSite{profileID: profileID, position: position}
+	s := &StreamingSite{profileID: profileID, position: position, enabled: true}
 	if err := s.SetName(name); err != nil {
 		return nil, err
 	}
@@ -67,7 +68,7 @@ func NewStreamingSite(profileID int64, name, url string, language Language, posi
 }
 
 // Reconstitute восстанавливает StreamingSite из БД без валидации.
-func Reconstitute(id, profileID int64, name, url string, language Language, position int, createdAt, updatedAt time.Time) *StreamingSite {
+func Reconstitute(id, profileID int64, name, url string, language Language, position int, enabled bool, createdAt, updatedAt time.Time) *StreamingSite {
 	return &StreamingSite{
 		id:        id,
 		profileID: profileID,
@@ -75,6 +76,7 @@ func Reconstitute(id, profileID int64, name, url string, language Language, posi
 		url:       url,
 		language:  language,
 		position:  position,
+		enabled:   enabled,
 		createdAt: createdAt,
 		updatedAt: updatedAt,
 	}
@@ -88,6 +90,7 @@ func (s *StreamingSite) Name() string         { return s.name }
 func (s *StreamingSite) URL() string          { return s.url }
 func (s *StreamingSite) Language() Language   { return s.language }
 func (s *StreamingSite) Position() int        { return s.position }
+func (s *StreamingSite) Enabled() bool        { return s.enabled }
 func (s *StreamingSite) CreatedAt() time.Time { return s.createdAt }
 func (s *StreamingSite) UpdatedAt() time.Time { return s.updatedAt }
 
@@ -132,6 +135,13 @@ func (s *StreamingSite) SetLanguage(language Language) error {
 
 func (s *StreamingSite) SetPosition(position int) {
 	s.position = position
+	s.touch()
+}
+
+// SetEnabled переключает видимость сайта в дропдауне «Где смотреть» на фронте —
+// отключённый сайт остаётся в списке настроек, но не предлагается при добавлении дорамы.
+func (s *StreamingSite) SetEnabled(enabled bool) {
+	s.enabled = enabled
 	s.touch()
 }
 
