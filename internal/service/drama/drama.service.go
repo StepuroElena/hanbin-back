@@ -39,17 +39,19 @@ type ProgressOutput struct {
 
 // CreateInput — тело запроса на добавление дорамы.
 type CreateInput struct {
-	Title          string   `json:"title"`
-	WatchURL       string   `json:"watch_url"`
-	SourceURL      string   `json:"source_url"`      // опционально, точная ссылка на страницу дорамы у источника
-	ReleaseYear    int      `json:"release_year"`
-	ReleaseTag     string   `json:"release_tag"`     // "ongoing" | "released"
-	TranslationTag string   `json:"translation_tag"` // "translated" | "translating"
-	Genre          string   `json:"genre"`
-	Rating         *float64 `json:"rating"`          // опционально
-	Country        string   `json:"country"`
-	Voiceover      string   `json:"voiceover"`       // опционально, парсится с сайта-источника
-	PosterURL      string   `json:"poster_url"`      // опционально, og:image с сайта-источника
+	Title          string        `json:"title"`
+	WatchURL       string        `json:"watch_url"`
+	SourceURL      string        `json:"source_url"`      // опционально, точная ссылка на страницу дорамы у источника
+	ReleaseYear    int           `json:"release_year"`
+	ReleaseTag     string        `json:"release_tag"`     // "ongoing" | "released"
+	TranslationTag string        `json:"translation_tag"` // "translated" | "translating"
+	Genre          string        `json:"genre"`
+	Rating         *float64      `json:"rating"`          // опционально
+	Country        string        `json:"country"`
+	Voiceover      string        `json:"voiceover"`       // опционально, парсится с сайта-источника
+	PosterURL      string        `json:"poster_url"`      // опционально, og:image с сайта-источника
+	EpisodeDurationMin *int      `json:"episode_duration_min"` // опционально, длительность одной серии в минутах, парсится со скрейпера
+	Seasons        []SeasonInput `json:"seasons"`               // опционально, число серий по сезонам, парсится со скрейпера
 }
 
 // ArchiveInput — тело запроса на изменение статуса архива.
@@ -138,6 +140,14 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
 
+	seasons := make([]domain.Season, 0, len(in.Seasons))
+	for _, s := range in.Seasons {
+		seasons = append(seasons, domain.Season{
+			SeasonNumber: s.SeasonNumber,
+			EpisodeCount: s.EpisodeCount,
+		})
+	}
+
 	d, err := domain.NewDrama(
 		profileID,
 		in.Title,
@@ -151,6 +161,8 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 		in.Country,
 		in.Voiceover,
 		in.PosterURL,
+		in.EpisodeDurationMin,
+		seasons,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("service.Create: %w", err)

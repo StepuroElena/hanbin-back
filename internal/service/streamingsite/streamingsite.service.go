@@ -33,7 +33,6 @@ var defaultSites = []defaultSite{
 	{name: "Doramy.club", url: "https://doramy.club", language: domain.LanguageRU},
 	{name: "Doramy.info", url: "https://doramy.info", language: domain.LanguageRU},
 	{name: "Doramiru", url: "https://doram-ru.org", language: domain.LanguageRU},
-	{name: "Dorama24", url: "https://dorama24.su", language: domain.LanguageRU},
 	{name: "Rakuten Viki", url: "https://viki.com", language: domain.LanguageEN},
 	{name: "Netflix", url: "https://netflix.com", language: domain.LanguageMulti},
 	{name: "iQiyi", url: "https://iq.com", language: domain.LanguageMulti},

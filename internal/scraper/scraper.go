@@ -48,6 +48,9 @@ type parser interface {
 var parsers = []parser{
 	&doramatvParser{},
 	&doramalandParser{},
+	&dleDoramaParser{hostMatch: "doramy.club", baseURL: "https://doramy.club"},
+	&dleDoramaParser{hostMatch: "doramy.info", baseURL: "https://doramy.info"},
+	&dleDoramaParser{hostMatch: "doram-ru", baseURL: "https://doram-ru.org"},
 	&mydramalistParser{},
 	&shikimoriParser{},
 	&genericParser{},
@@ -174,7 +177,6 @@ func normalizeURL(rawURL, title string) (string, error) {
 		strings.Contains(host, "doramy.club"),
 		strings.Contains(host, "doramy.info"),
 		strings.Contains(host, "doram-ru"),
-		strings.Contains(host, "dorama24"),
 		strings.Contains(host, "mydramalist"):
 		if u.Path == "" || u.Path == "/" {
 			u.Path = "/search"

@@ -151,6 +151,8 @@ func NewDrama(
 	country string,
 	voiceover string,
 	posterURL string,
+	episodeDurationMin *int,
+	seasons []Season,
 ) (*Drama, error) {
 	if profileID <= 0 {
 		return nil, ErrProfileIDRequired
@@ -190,6 +192,26 @@ func NewDrama(
 		return nil, err
 	}
 	d.posterURL = strings.TrimSpace(posterURL)
+
+	if episodeDurationMin != nil {
+		if *episodeDurationMin <= 0 {
+			return nil, ErrInvalidEpisodeDuration
+		}
+		v := *episodeDurationMin
+		d.episodeDurationMin = &v
+	}
+
+	if len(seasons) > 0 {
+		for _, s := range seasons {
+			if s.SeasonNumber <= 0 {
+				return nil, ErrInvalidSeasonNumber
+			}
+			if s.EpisodeCount <= 0 {
+				return nil, ErrInvalidEpisodeCount
+			}
+		}
+		d.seasons = seasons
+	}
 
 	// При создании статус всегда "запланировано"
 	d.watchStatus = WatchStatusPlanned
