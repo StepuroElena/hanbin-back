@@ -132,9 +132,6 @@ func (p *doramalandParser) bestSearchResult(body, queryTitle string) (string, bo
 		}
 
 		// Считаем долю совпавших токенов относительно запроса (0..1), а не абсолютный счёт.
-		// Абсолютный счёт с порогом ">0" раньше пропускал совпадение всего по одному случайному
-		// токену, из-за чего при поиске однословного названия (напр. «Гоблин»), которого на сайте нет,
-		// возвращалась совершенно нерелевантная дорама вместо честного «не найдено».
 		var enTokensAll []string
 		for _, enPart := range strings.Split(c.enName, "/") {
 			enTokensAll = append(enTokensAll, tokenize(enPart)...)
@@ -215,16 +212,22 @@ func (p *doramalandParser) parseDramaPage(body string) (*DramaInfo, error) {
 	}
 
 	// ── Перевод ────────────────────────────────────────────────────────────────
-	// "С русской озвучкой: Дубляж, SoftBox, Русские субтитры завершена"
-	// "завершена" после озвучки = translated, иначе проверяем ещё
-	reTranslation := regexp.MustCompile(`(?i)С\s+русской\s+озвучкой[^<]{0,200}завершена`)
-	if reTranslation.MatchString(body) {
+	// Никакого независимого сигнала для статуса перевода на этом сайте нет — фраза
+	// «с русской озвучкой» встречается в SEO-описании/ключевых словах буквально на
+	// каждой странице независимо от реального статуса перевода (это была ошибка в
+	// предыдущей версии парсера — перевод почти всегда ошибочно определялся как
+	// «переводится»). Вместо этого выводим статус перевода из уже определённого
+	// статуса выпуска: завершённая дорама чаще всего уже переведена полностью,
+	// а идущая (выходит) — переводится вместе с выходом новых серий.
+	if info.ReleaseTag == "released" {
 		info.TranslationTag = "translated"
-	} else if strings.Contains(strings.ToLower(body), "с русской озвучкой") {
-		info.TranslationTag = "translating"
 	} else {
-		info.TranslationTag = parseTranslationTagFromBody(body)
+		info.TranslationTag = "translating"
 	}
+
+	// ── Озвучка ────────────────────────────────────────────────────────────────
+	// "Озвучка: DubLikTV, Light Breeze, Русские субтитры, ..." — подтверждено вживую.
+	info.Voiceover = parseVoiceoverLabelled(body)
 
 	// ── Жанры ─────────────────────────────────────────────────────────────────
 	// <span class="serial-genres-links">Жанры: Драма, Комедия, ...</span>
@@ -274,25 +277,34 @@ func (p *doramalandParser) parseDramaPage(body string) (*DramaInfo, error) {
 	}
 
 	// ── Длительность ──────────────────────────────────────────────────────────
-	// "Длительность: 1 ч. 5 мин." → 65 мин
-	reDurHM := regexp.MustCompile(`(?i)Длительность[^0-9]*(\d+)\s*ч[^0-9]*(\d+)\s*мин`)
-	reDurM := regexp.MustCompile(`(?i)Длительность[^0-9]*(\d+)\s*мин`)
-	if m := reDurHM.FindStringSubmatch(body); len(m) >= 3 {
-		h, _ := parseInt(m[1])
-		mn, _ := parseInt(m[2])
-		total := h*60 + mn
-		if total > 0 {
-			info.EpisodeDurationMin = ptr(total)
-		}
-	} else if m := reDurM.FindStringSubmatch(body); len(m) >= 2 {
-		if v, ok := parseInt(m[1]); ok && v > 0 {
-			info.EpisodeDurationMin = ptr(v)
+	// Приоритет — общий хелпер: он сначала проверяет метатег video:duration
+	// (ISO 8601, напр. "PT45M") — подтверждено вживую и надёжнее любого текстового
+	// парсинга рядом с лейблом. Текстовый разбор "Длительность: N мин." — фоллбэк.
+	info.EpisodeDurationMin = parseDurationFromBody(body)
+	if info.EpisodeDurationMin == nil {
+		reDurHM := regexp.MustCompile(`(?i)Длительность[^0-9]*(\d+)\s*ч[^0-9]*(\d+)\s*мин`)
+		reDurM := regexp.MustCompile(`(?i)Длительность[^0-9]*(\d+)\s*мин`)
+		if m := reDurHM.FindStringSubmatch(body); len(m) >= 3 {
+			h, _ := parseInt(m[1])
+			mn, _ := parseInt(m[2])
+			total := h*60 + mn
+			if total > 0 {
+				info.EpisodeDurationMin = ptr(total)
+			}
+		} else if m := reDurM.FindStringSubmatch(body); len(m) >= 2 {
+			if v, ok := parseInt(m[1]); ok && v > 0 {
+				info.EpisodeDurationMin = ptr(v)
+			}
 		}
 	}
 
 	// ── Серии ─────────────────────────────────────────────────────────────────
-	// "Количество серий: 20" или "Дорама:20 серий"
-	reEps := regexp.MustCompile(`(?i)(?:Количество\s+серий|Дорама)[^0-9]*(\d+)\s*серий?`)
+	// "Количество серий: 33" — подтверждено вживую. Раньше здесь была ещё альтернатива по слову
+	// "Дорама" и требование слова "серий" СРАЗУ после числа — обе причины, почему
+	// число серий нигде не подтягивалось: "Дорама" слово слишком часто встречается раньше
+	// в og:title и хватает совсем другое число (напр. год), а на реальной странице после
+	// числа серий ничего нет ("Количество серий: 33", без повтора слова "серий").
+	reEps := regexp.MustCompile(`(?i)Количество\s+серий[^0-9]{0,10}(\d+)`)
 	if m := reEps.FindStringSubmatch(body); len(m) >= 2 {
 		if v, ok := parseInt(m[1]); ok && v > 0 {
 			info.Seasons = []SeasonInfo{{SeasonNumber: 1, EpisodeCount: v}}

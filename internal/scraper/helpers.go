@@ -151,9 +151,21 @@ func parseRatingFromBody(body string) *float64 {
 
 // parseDurationFromBody ищет продолжительность одного эпизода в минутах.
 func parseDurationFromBody(body string) *int {
+	// Приоритет №1: стандартный видео-метатег video:duration в формате ISO 8601 (напр. "PT45M").
+	// Это структурированные данные (OpenGraph video), а не текст рядом с лейблом на человеческом
+	// языке — гораздо надёжнее и не зависит от того, как конкретно сайт оформил разметку.
+	// Подтверждено вживую на dorama.land: <meta property="video:duration" content="PT45M">.
+	if d := metaContent(body, "video:duration"); d != "" {
+		if m := regexp.MustCompile(`(?i)PT(\d+)M`).FindStringSubmatch(d); len(m) >= 2 {
+			if v, ok := parseInt(m[1]); ok && v > 0 && v < 300 {
+				return ptr(v)
+			}
+		}
+	}
+
 	durationPatterns := []string{
 		`(?i)(?:длительность|duration|продолжительность)[^:]*:\s*(?:</[^>]+>)*\s*(\d+)\s*(?:мин|min)`,
-		`(?i)"duration"\s*:\s*"?PT(\d+)M"?`, // ISO 8601
+		`(?i)"duration"\s*:\s*"?PT(\d+)M"?`, // ISO 8601 (JSON-LD)
 		`(?i)(\d+)\s*(?:мин(?:ут)?\.?|min\.?)\s*(?:/\s*(?:эп|ep))`,
 		`(?i)(\d+)\s*minutes?\s*per\s*episode`,
 	}
@@ -176,6 +188,30 @@ func parseDurationFromBody(body string) *int {
 	return nil
 }
 
+// ── Озвучка / студии перевода ─────────────────────────────────────────────────
+
+// parseVoiceoverLabelled ищет список студий озвучки/перевода по лейблу "Озвучка:" —
+// формат, подтверждённый вживую на dorama.land: "Озвучка: DubLikTV, Light Breeze, ...".
+// Возвращает сырую строку через запятую как есть — сопоставление с фиксированным
+// списком VOICEOVER_OPTIONS происходит уже на фронте (там же по каждой из перечисленных
+// через запятую студий, а не только по первой).
+func parseVoiceoverLabelled(body string) string {
+	re := regexp.MustCompile(`(?is)Озвучка[^:<]*:\s*(?:</[^>]+>\s*)?([^<\n]{2,300})`)
+	m := re.FindStringSubmatch(body)
+	if len(m) < 2 {
+		return ""
+	}
+	v := strings.TrimSpace(stripTags(m[1]))
+	v = strings.Trim(v, ". ")
+	if v == "" {
+		return ""
+	}
+	if len([]rune(v)) > 255 {
+		v = string([]rune(v)[:255])
+	}
+	return v
+}
+
 // ── Постер ──────────────────────────────────────────────────────────────────────────────
 
 // parsePosterURL извлекает URL постера из og:image / twitter:image или JSON-LD image.
@@ -186,11 +222,23 @@ func parsePosterURL(body string) string {
 	if og := metaContent(body, "og:image"); og != "" {
 		return resolvePosterURL(og)
 	}
+	if og := metaContent(body, "og:image:secure_url"); og != "" {
+		return resolvePosterURL(og)
+	}
 	if tw := metaContent(body, "twitter:image"); tw != "" {
 		return resolvePosterURL(tw)
 	}
 	if jl := jsonLDField(body, "image"); jl != "" {
 		return resolvePosterURL(jl)
+	}
+	// <link rel="image_src" href="..."> — старый, но всё ещё встречающийся способ указать постер.
+	if m := regexp.MustCompile(`(?i)<link[^>]+rel="image_src"[^>]+href="([^"]+)"`).FindStringSubmatch(body); len(m) >= 2 {
+		return resolvePosterURL(m[1])
+	}
+	// Явно помеченная постером/обложкой картинка (class="poster"/"cover") — на случай, если сайт
+	// не проставляет og:image вовсе, но верстает страницу с понятной семантикой класса.
+	if m := regexp.MustCompile(`(?i)<img[^>]+class="[^"]*(?:poster|cover)[^"]*"[^>]*\ssrc="([^"]+)"`).FindStringSubmatch(body); len(m) >= 2 {
+		return resolvePosterURL(m[1])
 	}
 	return ""
 }

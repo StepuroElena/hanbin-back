@@ -273,23 +273,21 @@ func (p *doramatvParser) parseDramaPage(body string) (*DramaInfo, error) {
 	}
 
 	// ── Год ────────────────────────────────────────────────────────────────────
-	// Структура: <span class="cr-hero-short-details__item cr-hero-short-details__item--hoverable"
-	//              data-tippy-content="2023 г.<br>2024 г." ...>2023 - 2024 г.</span>
-	// Берём год из data-tippy-content или из текста спана
 	info.ReleaseYear = p.parseYear(body)
 
 	// ── Страна ────────────────────────────────────────────────────────────────
-	// <a class="cr-hero-short-details__item" href="/list/...">Южная Корея</a>
 	info.Country = p.parseCountryHero(body)
 
-	// ── Статус выпуска ─────────────────────────────────────────────────────────
-	// <div class="cr-info-details-item__title">Выпуск</div>
-	// <span class="cr-info-details-item__status" data-production-status="FINISHED">Завершён</span>
+	// ── Статус выпуска и перевода ─────────────────────────────────────────────
+	// Реальная страница показывает эти статусы как простой список лейбл→значение:
+	//   Выпуск
+	//   Завершён
+	//   Перевод
+	//   Завершён
+	// (подтверждено вживую). Изолируем текст сразу после лейбла и классифицируем
+	// именно его — так гораздо надёжнее, чем сканировать ключевые слова по всей
+	// странице целиком (там легко словить случайное совпадение).
 	info.ReleaseTag = p.parseReleaseTag(body)
-
-	// ── Статус перевода ────────────────────────────────────────────────────────
-	// <div class="cr-info-details-item__title">Перевод</div>
-	// <span ... data-translation-status="FINISHED">Завершён</span>
 	info.TranslationTag = p.parseTranslationTag(body)
 
 	// ── Жанры ─────────────────────────────────────────────────────────────────
@@ -299,10 +297,13 @@ func (p *doramatvParser) parseDramaPage(body string) (*DramaInfo, error) {
 	info.Rating = parseRatingFromBody(body)
 
 	// ── Длительность и серии ──────────────────────────────────────────────────
-	// "16 из 16 65 мин." из блока с title "Серий"
+	// Реальный формат: "15 из 14" (серий) сразу за которым "70 мин." (длительность).
 	p.parseEpisodes(body, info)
 
 	// ── Озвучка ───────────────────────────────────────────────────────────────
+	// Список студий перевода лежит в отдельном разделе "Переводчики" ниже по
+	// странице (не в верхнем инфо-блоке, как считалось раньше) — ссылки вида
+	// /list/person/<slug> на каждую студию.
 	info.Voiceover = p.parseVoiceover(body)
 
 	// ── Постер ──────────────────────────────────────────────────────────────────
@@ -332,7 +333,15 @@ func (p *doramatvParser) parseYear(body string) *int {
 		}
 	}
 
-	// 3. Дата показа: "с 24.11.2023 по" — берём год из даты начала
+	// 3. Ссылка на год в шапке: <a href="/list/year/2026">2026 г.</a> — подтверждено вживую.
+	reYearLink := regexp.MustCompile(`(?i)/list/year/(\d{4})"[^>]*>`)
+	if m := reYearLink.FindStringSubmatch(body); len(m) >= 2 {
+		if v, ok := parseInt(m[1]); ok && v >= 1990 {
+			return ptr(v)
+		}
+	}
+
+	// 4. Дата показа: "с 24.11.2023 по" — берём год из даты начала
 	reShowDate := regexp.MustCompile(`с\s+\d{2}\.\d{2}\.(\d{4})\s+по`)
 	if m := reShowDate.FindStringSubmatch(body); len(m) >= 2 {
 		if v, ok := parseInt(m[1]); ok && v >= 1990 {
@@ -344,9 +353,16 @@ func (p *doramatvParser) parseYear(body string) *int {
 }
 
 // parseCountryHero извлекает страну из шапки дорамы.
-// <a class="cr-hero-short-details__item" ...>Южная Корея</a>
+// Подтверждено вживую: <a href="/list/country/south_korea">Южная Корея</a>
 func (p *doramatvParser) parseCountryHero(body string) string {
-	// Ищем ссылки в блоке cr-hero-short-details
+	reCountryLink := regexp.MustCompile(`(?i)/list/country/[^"]+"[^>]*>([^<]{3,30})<`)
+	if m := reCountryLink.FindStringSubmatch(body); len(m) >= 2 {
+		c := strings.TrimSpace(m[1])
+		if c != "" {
+			return c
+		}
+	}
+	// Fallback: старый (неподтверждённый) селектор — вдруг где-то встречается
 	reCountry := regexp.MustCompile(`cr-hero-short-details__item"[^>]*href="/list/[^"]*">([^<]{3,30})</a>`)
 	if m := reCountry.FindStringSubmatch(body); len(m) >= 2 {
 		c := strings.TrimSpace(m[1])
@@ -358,33 +374,65 @@ func (p *doramatvParser) parseCountryHero(body string) string {
 	return parseCountryFromBody(body)
 }
 
-// parseReleaseTag читает data-production-status из блока деталей.
-// FINISHED → "released", AIRING / IN_PROGRESS → "ongoing", ANNOUNCED → "planned"
-func (p *doramatvParser) parseReleaseTag(body string) string {
-	reStatus := regexp.MustCompile(`data-production-status="([^"]+)"`)
-	if m := reStatus.FindStringSubmatch(body); len(m) >= 2 {
-		switch strings.ToUpper(m[1]) {
-		case "FINISHED":
-			return "released"
-		case "AIRING", "IN_PROGRESS", "ONGOING":
-			return "ongoing"
-		case "ANNOUNCED", "PLANNED":
-			return "planned"
+// doramatvLabelValue ищет текстовый лейбл (напр. "Выпуск", "Перевод") и возвращает
+// текст, идущий сразу за ним — не более пары простых тегов между лейблом и значением.
+func doramatvLabelValue(body, label string) string {
+	re := regexp.MustCompile(`(?is)` + regexp.QuoteMeta(label) + `\s*(?:</[^>]+>\s*)?(?:<[^>]+>\s*)?([^\n<]{1,60})`)
+	m := re.FindStringSubmatch(body)
+	if len(m) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(m[1])
+}
+
+// classifyStatusValue классифицирует короткое значение статуса ("Завершён", "Выходит" и т.п.)
+// на "готово" (released/translated) или "в процессе" (ongoing/translating).
+// Возвращает matched=false, если значение не распознано — тогда вызывающий код
+// должен откатиться на менее точный фоллбэк.
+func classifyStatusValue(v string) (matched bool, ongoing bool) {
+	lower := strings.ToLower(v)
+
+	doneWords := []string{"завершён", "завершен", "завершена", "закончен", "закончена", "закончено"}
+	for _, w := range doneWords {
+		if strings.Contains(lower, w) {
+			return true, false
 		}
 	}
-	// Fallback: текстовый поиск
+
+	ongoingWords := []string{
+		"выходит", "продолжается", "переводится", "в процессе", "онгоинг",
+		"выходят", "не завершён", "не завершен",
+	}
+	for _, w := range ongoingWords {
+		if strings.Contains(lower, w) {
+			return true, true
+		}
+	}
+
+	return false, false
+}
+
+// parseReleaseTag определяет статус выпуска по лейблу "Выпуск" на странице.
+func (p *doramatvParser) parseReleaseTag(body string) string {
+	if v := doramatvLabelValue(body, "Выпуск"); v != "" {
+		if matched, ongoing := classifyStatusValue(v); matched {
+			if ongoing {
+				return "ongoing"
+			}
+			return "released"
+		}
+	}
 	return parseReleaseTagFromBody(body)
 }
 
-// parseTranslationTag читает data-translation-status.
+// parseTranslationTag определяет статус перевода по лейблу "Перевод" на странице.
 func (p *doramatvParser) parseTranslationTag(body string) string {
-	reStatus := regexp.MustCompile(`data-translation-status="([^"]+)"`)
-	if m := reStatus.FindStringSubmatch(body); len(m) >= 2 {
-		switch strings.ToUpper(m[1]) {
-		case "FINISHED":
+	if v := doramatvLabelValue(body, "Перевод"); v != "" {
+		if matched, ongoing := classifyStatusValue(v); matched {
+			if ongoing {
+				return "translating"
+			}
 			return "translated"
-		case "IN_PROGRESS", "ONGOING", "AIRING":
-			return "translating"
 		}
 	}
 	return parseTranslationTagFromBody(body)
@@ -392,7 +440,7 @@ func (p *doramatvParser) parseTranslationTag(body string) string {
 
 // parseGenres ищет жанры в ссылках на страницы жанров.
 func (p *doramatvParser) parseGenres(body string) []string {
-	genreRe := regexp.MustCompile(`(?i)/list/genres/[^"?#]+["?#][^>]*>([^<]{2,40})</a>`)
+	genreRe := regexp.MustCompile(`(?i)/list/genre[s]?/[^"?#]+["?#][^>]*>([^<]{2,40})</a>`)
 	matches := genreRe.FindAllStringSubmatch(body, -1)
 	seen := map[string]bool{}
 	genres := []string{}
@@ -406,55 +454,74 @@ func (p *doramatvParser) parseGenres(body string) []string {
 	return genres
 }
 
-// parseEpisodes парсит количество серий и длительность из блока "Серий".
-// Формат: "16 из 16 65 мин."
+// parseEpisodes парсит количество серий и длительность одной серии.
+// Реальный формат страницы: "15 из 14" (серий вышло из объявленных), сразу
+// после которого идёт "70 мин." — оба значения ищем прямо по тексту страницы,
+// не полагаясь на конкретный CSS-класс контейнера (тот, что использовался
+// раньше, оказался придуманным и не соответствовал реальной разметке).
 func (p *doramatvParser) parseEpisodes(body string, info *DramaInfo) {
-	// Ищем блок с заголовком "Серий"
-	reSeriesBlock := regexp.MustCompile(`(?i)cr-info-details-item__title">Серий</div>\s*<div[^>]*>([\s\S]{0,300}?)</div>\s*</div>`)
-	m := reSeriesBlock.FindStringSubmatch(body)
-	if len(m) < 2 {
-		return
-	}
-	block := stripTags(m[1])
-
-	// "16 из 16" — берём второе число как total
 	reEpTotal := regexp.MustCompile(`(\d+)\s+из\s+(\d+)`)
-	if em := reEpTotal.FindStringSubmatch(block); len(em) >= 3 {
-		if total, ok := parseInt(em[2]); ok && total > 0 {
+	loc := reEpTotal.FindStringSubmatchIndex(body)
+	if loc != nil {
+		if total, ok := parseInt(body[loc[4]:loc[5]]); ok && total > 0 && total < 1000 {
 			info.Seasons = []SeasonInfo{{SeasonNumber: 1, EpisodeCount: total}}
 		}
-	} else {
-		// Просто число серий без "из"
-		if ep := firstMatch(regexp.MustCompile(`(\d+)`), block); ep != "" {
-			if v, ok := parseInt(ep); ok && v > 0 && v < 1000 {
-				info.Seasons = []SeasonInfo{{SeasonNumber: 1, EpisodeCount: v}}
+
+		tail := body[loc[1]:]
+		if len(tail) > 60 {
+			tail = tail[:60]
+		}
+		if dm := regexp.MustCompile(`(\d+)\s*мин`).FindStringSubmatch(tail); len(dm) >= 2 {
+			if v, ok := parseInt(dm[1]); ok && v > 0 && v < 300 {
+				info.EpisodeDurationMin = ptr(v)
 			}
 		}
 	}
 
-	// Длительность: "65 мин."
-	reDur := regexp.MustCompile(`(\d+)\s*мин`)
-	if dm := reDur.FindStringSubmatch(block); len(dm) >= 2 {
-		if v, ok := parseInt(dm[1]); ok && v > 0 && v < 300 {
-			info.EpisodeDurationMin = ptr(v)
-		}
+	if info.EpisodeDurationMin == nil {
+		info.EpisodeDurationMin = parseDurationFromBody(body)
 	}
 }
 
-// parseVoiceover извлекает студию/автора озвучки из блока деталей с title "Озвучка".
-// Структура аналогична блоку "Серий":
-//   <div class="cr-info-details-item__title">Озвучка</div>
-//   <div ...>LostFilm, HDrezka Studio</div>
+// parseVoiceover извлекает студии перевода из раздела "Переводчики" — списка
+// ссылок вида <a href="/list/person/light_breeze">Light Breeze</a>. Раньше
+// парсер искал озвучку в верхнем инфо-блоке рядом с "Серий"/"Канал" — там её
+// нет вовсе, реальный список лежит в отдельном разделе значительно ниже.
 func (p *doramatvParser) parseVoiceover(body string) string {
-	reVoiceBlock := regexp.MustCompile(`(?i)cr-info-details-item__title">Озвучка</div>\s*<div[^>]*>([\s\S]{0,400}?)</div>\s*</div>`)
-	m := reVoiceBlock.FindStringSubmatch(body)
-	if len(m) < 2 {
+	idx := strings.Index(body, "Переводчики")
+	if idx == -1 {
 		return ""
 	}
-	voiceover := stripTags(m[1])
-	voiceover = strings.TrimSpace(voiceover)
-	if len([]rune(voiceover)) > 255 {
-		voiceover = string([]rune(voiceover)[:255])
+	window := body[idx+len("Переводчики"):]
+
+	// Раздел заканчивается перед следующим заголовком ("Трейлеры и дополнительные
+	// материалы", "Общая оценка" и т.п.) — обрезаем окно там, если нашли.
+	if stop := regexp.MustCompile(`(?i)Трейлеры|Общая\s+оценка|Показать\s+ещё`).FindStringIndex(window); stop != nil {
+		window = window[:stop[0]]
 	}
-	return voiceover
+	if len(window) > 4000 {
+		window = window[:4000]
+	}
+
+	linkRe := regexp.MustCompile(`(?i)/list/person/[^"']+["'][^>]*>([^<]{2,60})<`)
+	matches := linkRe.FindAllStringSubmatch(window, -1)
+
+	seen := map[string]bool{}
+	var names []string
+	for _, m := range matches {
+		name := strings.TrimSpace(m[1])
+		if name != "" && !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+
+	joined := strings.Join(names, ", ")
+	if len([]rune(joined)) > 255 {
+		joined = string([]rune(joined)[:255])
+	}
+	return joined
 }
