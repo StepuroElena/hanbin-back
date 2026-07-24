@@ -164,7 +164,7 @@ func parseDurationFromBody(body string) *int {
 	}
 
 	durationPatterns := []string{
-		`(?i)(?:длительность|duration|продолжительность)[^:]*:\s*(?:</[^>]+>)*\s*(\d+)\s*(?:мин|min)`,
+		`(?i)(?:длительность|время|duration|продолжительность)[^:]*:\s*(?:</[^>]+>)*\s*(\d+)\s*(?:мин|min)`,
 		`(?i)"duration"\s*:\s*"?PT(\d+)M"?`, // ISO 8601 (JSON-LD)
 		`(?i)(\d+)\s*(?:мин(?:ут)?\.?|min\.?)\s*(?:/\s*(?:эп|ep))`,
 		`(?i)(\d+)\s*minutes?\s*per\s*episode`,
@@ -195,13 +195,34 @@ func parseDurationFromBody(body string) *int {
 // Возвращает сырую строку через запятую как есть — сопоставление с фиксированным
 // списком VOICEOVER_OPTIONS происходит уже на фронте (там же по каждой из перечисленных
 // через запятую студий, а не только по первой).
+//
+// Значение после лейбла может быть обёрнуто в <a>-ссылку (подтверждено вживую на
+// doramy.club: "Озвучка: <a href=...>DubLik-TV</a>") — простой захват [^<\n]+ сразу
+// после двоеточия такой случай не ловит (останавливается на открывающем теге <a>) — поэтому
+// вместо точечного регекса берём небольшое окно текста после лейбла и чистим теги целиком (stripTags
+// уже умеет вычищать произвольные теги внутри).
 func parseVoiceoverLabelled(body string) string {
-	re := regexp.MustCompile(`(?is)Озвучка[^:<]*:\s*(?:</[^>]+>\s*)?([^<\n]{2,300})`)
-	m := re.FindStringSubmatch(body)
-	if len(m) < 2 {
+	idx := strings.Index(body, "Озвучка")
+	if idx == -1 {
 		return ""
 	}
-	v := strings.TrimSpace(stripTags(m[1]))
+
+	window := body[idx+len("Озвучка"):]
+	// Отрезаем перед следующим известным лейблом, если он попадает в окно — чтобы не
+	// захватить лишнего (напр. список актёров через "В ролях").
+	if stop := regexp.MustCompile(`(?i)В\s+ролях|Режиссёр|Режиссер|Сценарист|Канал`).FindStringIndex(window); stop != nil {
+		window = window[:stop[0]]
+	}
+	if len(window) > 400 {
+		window = window[:400]
+	}
+
+	// Сам лейбл может иметь окончание типа " и перевод:" — отрезаем всё до первого двоеточия.
+	if colonIdx := strings.Index(window, ":"); colonIdx != -1 {
+		window = window[colonIdx+1:]
+	}
+
+	v := strings.TrimSpace(stripTags(window))
 	v = strings.Trim(v, ". ")
 	if v == "" {
 		return ""

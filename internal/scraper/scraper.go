@@ -174,14 +174,25 @@ func normalizeURL(rawURL, title string) (string, error) {
 		u.RawQuery = q.Encode()
 
 	case strings.Contains(host, "dorama.land"),
-		strings.Contains(host, "doramy.club"),
-		strings.Contains(host, "doramy.info"),
-		strings.Contains(host, "doram-ru"),
 		strings.Contains(host, "mydramalist"):
 		if u.Path == "" || u.Path == "/" {
 			u.Path = "/search"
 			q := url.Values{}
 			q.Set("q", title)
+			u.RawQuery = q.Encode()
+		}
+
+	case strings.Contains(host, "doramy.club"),
+		strings.Contains(host, "doramy.info"),
+		strings.Contains(host, "doram-ru"):
+		// Подтверждено вживую на doramy.club (через DevTools в браузере): поиск тут не /search?q=,
+		// а корневой /?s= — станартный параметр поиска WordPress. Раньше здесь был выдуманный
+		// /search?q=, который на самом деле не существует — из-за этого ни одна дорама на этих
+		// сайтах не находилась вообще (страница поиска всегда была пустой/чужой страницей).
+		if u.Path == "" || u.Path == "/" {
+			u.Path = "/"
+			q := url.Values{}
+			q.Set("s", title)
 			u.RawQuery = q.Encode()
 		}
 
