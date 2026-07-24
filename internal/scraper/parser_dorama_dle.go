@@ -36,7 +36,7 @@ func (p *dleDoramaParser) canHandle(host string) bool {
 
 func (p *dleDoramaParser) parse(ctx context.Context, body, rawURL string) (*DramaInfo, error) {
 	if p.isSearchPage(rawURL) {
-		queryTitle := extractQueryParam(rawURL, "q")
+		queryTitle := extractQueryParam(rawURL, "s")
 		dramaURL, found := p.bestSearchResult(body, queryTitle)
 		if !found {
 			return nil, ErrNotFound
@@ -57,19 +57,33 @@ func (p *dleDoramaParser) parse(ctx context.Context, body, rawURL string) (*Dram
 }
 
 func (p *dleDoramaParser) isSearchPage(rawURL string) bool {
-	return strings.Contains(rawURL, "/search")
+	// Подтверждено вживую (DevTools в браузере на doramy.club): поиск идёт через корневой /?s=,
+	// а не /search?q=, как считалось раньше.
+	return strings.Contains(rawURL, "?s=") || strings.Contains(rawURL, "&s=")
 }
 
-// reDleDoramaLink находит ссылки вида <a href="/12345-slug.html">Название</a>.
-// Такие ссылки на странице поиска встречаются несколько раз на карточку
-// (обложка + заголовок) — дедуплицируем по href ниже.
-var reDleDoramaLink = regexp.MustCompile(`<a[^>]+href="(/\d+-[a-zA-Zа-яА-ЯёЁ0-9-]+\.html)"[^>]*>([^<]{2,150})</a>`)
+// reDleAnchorOpen находит ОТКРЫВАЮЩИЙ тег ссылки на страницу дорамы вида
+// <a href="/12345-slug.html"> или <a href="https://doramy.club/12345-slug.html">.
+//
+// Подтверждено вживую на doramy.club — реальная карточка результата поиска:
+//   <a href="https://doramy.club/57649-yuzhnye-arxivy.html">
+//     <img src="..." />
+//     <span>Южные архивы</span>
+//   </a>
+// Раньше regex требовал ОБА условия сразу: (а) относительный href без домена
+// и (б) голый текст сразу после ">" — на деле href абсолютный (с доменом), а
+// название вложено в <span> после <img>. Ни одно из двух условий не совпадало
+// с реальной вёрсткой, поэтому карточки не находились вообще ни разу — отсюда
+// «не найдено» независимо от того, что искали. Теперь: домен в href — опционален
+// (некапturing группа), а название вытаскиваем из всего содержимого <a>...</a>
+// через stripTags, не полагаясь на то, что оно идёт сразу голым текстом.
+var reDleAnchorOpen = regexp.MustCompile(`<a[^>]+href="(?:https?://[^/"]+)?(/\d+-[a-zA-Zа-яА-ЯёЁ0-9-]+\.html)"[^>]*>`)
 
 // bestSearchResult выбирает наиболее подходящую по названию ссылку из результатов поиска.
 // Логика идентична doramalandParser.bestSearchResult — доля совпавших токенов
 // названия запроса, с порогом 0.5, чтобы не подсовывать нерелевантную дораму.
 func (p *dleDoramaParser) bestSearchResult(body, queryTitle string) (string, bool) {
-	matches := reDleDoramaLink.FindAllStringSubmatch(body, -1)
+	openMatches := reDleAnchorOpen.FindAllStringSubmatchIndex(body, -1)
 
 	type candidate struct {
 		url  string
@@ -78,19 +92,27 @@ func (p *dleDoramaParser) bestSearchResult(body, queryTitle string) (string, boo
 
 	seen := map[string]bool{}
 	var candidates []candidate
-	for _, m := range matches {
-		href := m[1]
-		name := strings.TrimSpace(stripTags(m[2]))
+	for _, m := range openMatches {
+		tagEnd := m[1]
+		hrefStart, hrefEnd := m[2], m[3]
+		href := body[hrefStart:hrefEnd]
+
+		// Название может быть обёрнуто в <img>/<span> внутри <a>...</a>, а не идти
+		// голым текстом сразу после ">" — берём весь кусок до закрывающего </a> и
+		// чистим теги целиком через stripTags, вместо того чтобы угадывать один
+		// точный regex-паттерн вложенной разметки.
+		closeIdx := strings.Index(body[tagEnd:], "</a>")
+		if closeIdx == -1 {
+			continue
+		}
+		inner := body[tagEnd : tagEnd+closeIdx]
+		name := strings.TrimSpace(stripTags(inner))
+
 		if name == "" || seen[href] || isNavWord(name) {
 			continue
 		}
 		seen[href] = true
-
-		full := href
-		if !strings.HasPrefix(full, "http") {
-			full = p.baseURL + href
-		}
-		candidates = append(candidates, candidate{url: full, name: name})
+		candidates = append(candidates, candidate{url: p.baseURL + href, name: name})
 	}
 
 	if len(candidates) == 0 {
@@ -165,6 +187,20 @@ func (p *dleDoramaParser) parseDramaPage(body string) (*DramaInfo, error) {
 			if v, ok := parseInt(y); ok && v >= 1990 {
 				info.ReleaseYear = ptr(v)
 				break
+			}
+		}
+	}
+	// Фоллбэк: на doramy.club год идёт простым текстом рядом с названием (напр. "Китай, 2026"),
+	// без отдельного лейбла "Год:" — берём первый год из начала страницы (там, где обычно
+	// лежат детали дорамы, а не случайный год из подвала/футера).
+	if info.ReleaseYear == nil {
+		window := body
+		if len(window) > 3000 {
+			window = window[:3000]
+		}
+		if y := firstMatch(reYear, window); y != "" {
+			if v, ok := parseInt(y); ok && v >= 1990 {
+				info.ReleaseYear = ptr(v)
 			}
 		}
 	}
