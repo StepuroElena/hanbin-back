@@ -87,6 +87,7 @@ func Scrape(ctx context.Context, title, siteURL string) (*DramaInfo, error) {
 				// Парсер вернул ErrNotFound — пробрасываем как есть
 				if errors.Is(err, ErrNotFound) {
 					log.Printf("[scraper] parser for host %q returned not-found (title=%q, url=%q)", host, title, finalURL)
+					log.Printf("[scraper] body snippet (len=%d): %s", len(body), snippet(body, 500))
 					return nil, ErrNotFound
 				}
 				// Любая другая ошибка парсера — тоже «не нашли», не 5xx
@@ -319,3 +320,14 @@ func jsonLDField(html, field string) string {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// snippet — вспомогалка только для временных диагностических логов: обрезает тело
+// страницы до length символов и схлопывает переводы строк, чтобы одна запись лога
+// была компактной однострочной записью, а не выводом на тысячи строк.
+func snippet(s string, length int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len([]rune(s)) > length {
+		return string([]rune(s)[:length]) + "…"
+	}
+	return s
+}
