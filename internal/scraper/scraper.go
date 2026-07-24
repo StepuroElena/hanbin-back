@@ -87,7 +87,7 @@ func Scrape(ctx context.Context, title, siteURL string) (*DramaInfo, error) {
 				// Парсер вернул ErrNotFound — пробрасываем как есть
 				if errors.Is(err, ErrNotFound) {
 					log.Printf("[scraper] parser for host %q returned not-found (title=%q, url=%q)", host, title, finalURL)
-					log.Printf("[scraper] body snippet (len=%d): %s", len(body), snippet(body, 4000))
+					logChallengeMechanics(body)
 					return nil, ErrNotFound
 				}
 				// Любая другая ошибка парсера — тоже «не нашли», не 5xx
@@ -330,4 +330,41 @@ func snippet(s string, length int) string {
 		return string([]rune(s)[:length]) + "…"
 	}
 	return s
+}
+
+// logChallengeMechanics — ВРЕМЕННАЯ ДИАГНОСТИКА. Страница-источник иногда отдаёт вместо реальной
+// страницы антибот-заглушку с JS-челленджем/редиректом. Обычный snippet(body, N) бесполезен,
+// если в начале тела лежит огромная base64-картинка спиннера — она съедает весь лимит. Вместо
+// этого ищем ключевые слова механизма редиректа/проверки по всему телу и печатаем окно
+// вокруг каждого совпадения.
+func logChallengeMechanics(body string) {
+	keywords := []string{"http-equiv=\"refresh\"", "location.href", "location.replace", "location.reload", "document.cookie", "setTimeout", "window.location", "noindex"}
+	found := false
+	for _, kw := range keywords {
+		idx := strings.Index(strings.ToLower(body), strings.ToLower(kw))
+		if idx == -1 {
+			continue
+		}
+		found = true
+		start := idx - 150
+		if start < 0 {
+			start = 0
+		}
+		end := idx + 300
+		if end > len(body) {
+			end = len(body)
+		}
+		log.Printf("[scraper] challenge keyword %q found at %d: %s", kw, idx, snippet(body[start:end], 450))
+	}
+	if !found {
+		log.Printf("[scraper] no known challenge keywords found; body len=%d, last 1000 chars: %s", len(body), snippet(lastN(body, 1000), 1000))
+	}
+}
+
+// lastN возвращает последние n символов строки (или всю строку, если она короче).
+func lastN(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
 }
