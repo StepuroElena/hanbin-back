@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -70,6 +71,10 @@ func Scrape(ctx context.Context, title, siteURL string) (*DramaInfo, error) {
 
 	body, finalURL, err := fetch(ctx, normalized)
 	if err != nil {
+		// ВРЕМЕННАЯ ДИАГНОСТИКА: раньше реальная причина (HTTP-статус, таймаут,
+		// too many redirects и т.п.) отбрасывалась молча — снаружи было не отличить
+		// "сайт реально не знает дораму" от "сайт зарезал запрос с IP Render".
+		log.Printf("[scraper] fetch failed for %q (title=%q): %v", normalized, title, err)
 		return nil, ErrNotFound
 	}
 
@@ -81,9 +86,11 @@ func Scrape(ctx context.Context, title, siteURL string) (*DramaInfo, error) {
 			if err != nil {
 				// Парсер вернул ErrNotFound — пробрасываем как есть
 				if errors.Is(err, ErrNotFound) {
+					log.Printf("[scraper] parser for host %q returned not-found (title=%q, url=%q)", host, title, finalURL)
 					return nil, ErrNotFound
 				}
 				// Любая другая ошибка парсера — тоже «не нашли», не 5xx
+				log.Printf("[scraper] parser for host %q errored (title=%q, url=%q): %v", host, title, finalURL, err)
 				return nil, ErrNotFound
 			}
 			if info.Title == "" {
