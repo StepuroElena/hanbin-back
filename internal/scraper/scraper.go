@@ -87,7 +87,7 @@ func Scrape(ctx context.Context, title, siteURL string) (*DramaInfo, error) {
 				// Парсер вернул ErrNotFound — пробрасываем как есть
 				if errors.Is(err, ErrNotFound) {
 					log.Printf("[scraper] parser for host %q returned not-found (title=%q, url=%q)", host, title, finalURL)
-					log.Printf("[scraper] body snippet (len=%d): %s", len(body), snippet(body, 500))
+					log.Printf("[scraper] body snippet (len=%d): %s", len(body), snippet(body, 4000))
 					return nil, ErrNotFound
 				}
 				// Любая другая ошибка парсера — тоже «не нашли», не 5xx
