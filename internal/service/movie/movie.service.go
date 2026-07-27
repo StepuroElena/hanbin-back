@@ -23,6 +23,7 @@ type CreateInput struct {
 	Title       string `json:"title"`
 	Genre       string `json:"genre"`
 	Country     string `json:"country"` // опционально
+	Category    string `json:"category"` // опционально — значение из персонального списка movie_categories
 	ReleaseYear *int   `json:"release_year"` // опционально
 }
 
@@ -38,6 +39,7 @@ type MovieOutput struct {
 	Title       string `json:"title"`
 	Genre       string `json:"genre"`
 	Country     string `json:"country"`
+	Category    string `json:"category"`
 	ReleaseYear *int   `json:"release_year"`
 	WatchStatus string `json:"watch_status"`
 	IsArchived  bool   `json:"is_archived"`
@@ -55,7 +57,7 @@ type StatsOutput struct {
 
 // Create добавляет новый фильм, привязанный к profileID из токена.
 func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (*MovieOutput, error) {
-	m, err := domain.NewMovie(profileID, in.Title, in.Genre, in.Country, in.ReleaseYear)
+	m, err := domain.NewMovie(profileID, in.Title, in.Genre, in.Country, in.Category, in.ReleaseYear)
 	if err != nil {
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
@@ -65,7 +67,7 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
 
-	out := toOutput(domain.Reconstitute(id, profileID, m.Title(), m.Genre(), m.Country(), m.ReleaseYear(), m.WatchStatus(), m.IsArchived(), m.CreatedAt(), m.UpdatedAt()))
+	out := toOutput(domain.Reconstitute(id, profileID, m.Title(), m.Genre(), m.Country(), m.Category(), m.ReleaseYear(), m.WatchStatus(), m.IsArchived(), m.CreatedAt(), m.UpdatedAt()))
 	return &out, nil
 }
 
@@ -186,6 +188,7 @@ func toOutput(m *domain.Movie) MovieOutput {
 		Title:       m.Title(),
 		Genre:       m.Genre(),
 		Country:     m.Country(),
+		Category:    m.Category(),
 		ReleaseYear: m.ReleaseYear(),
 		WatchStatus: string(m.WatchStatus()),
 		IsArchived:  m.IsArchived(),

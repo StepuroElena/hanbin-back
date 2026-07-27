@@ -21,8 +21,8 @@ func NewPostgresRepository(db *sql.DB) domain.Repository {
 
 func (r *postgresRepository) Create(ctx context.Context, m *domain.Movie) (int64, error) {
 	const q = `
-		INSERT INTO movies (profile_id, title, genre, country, release_year, watch_status, is_archived, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO movies (profile_id, title, genre, country, category, release_year, watch_status, is_archived, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id`
 
 	var id int64
@@ -31,6 +31,7 @@ func (r *postgresRepository) Create(ctx context.Context, m *domain.Movie) (int64
 		m.Title(),
 		m.Genre(),
 		m.Country(),
+		m.Category(),
 		m.ReleaseYear(),
 		string(m.WatchStatus()),
 		m.IsArchived(),
@@ -46,7 +47,7 @@ func (r *postgresRepository) Create(ctx context.Context, m *domain.Movie) (int64
 
 func (r *postgresRepository) GetAllByProfileID(ctx context.Context, profileID int64) ([]*domain.Movie, error) {
 	const q = `
-		SELECT id, profile_id, title, genre, country, release_year, watch_status, is_archived, created_at, updated_at
+		SELECT id, profile_id, title, genre, country, category, release_year, watch_status, is_archived, created_at, updated_at
 		FROM movies
 		WHERE profile_id = $1
 		ORDER BY created_at DESC`
@@ -73,7 +74,7 @@ func (r *postgresRepository) GetAllByProfileID(ctx context.Context, profileID in
 
 func (r *postgresRepository) GetByID(ctx context.Context, id int64) (*domain.Movie, error) {
 	const q = `
-		SELECT id, profile_id, title, genre, country, release_year, watch_status, is_archived, created_at, updated_at
+		SELECT id, profile_id, title, genre, country, category, release_year, watch_status, is_archived, created_at, updated_at
 		FROM movies
 		WHERE id = $1`
 
@@ -150,6 +151,7 @@ func scanMovie(row rowScanner) (*domain.Movie, error) {
 		title       string
 		genre       string
 		country     string
+		category    string
 		releaseYear sql.NullInt32
 		watchStatus string
 		isArchived  bool
@@ -157,7 +159,7 @@ func scanMovie(row rowScanner) (*domain.Movie, error) {
 		updatedAt   time.Time
 	)
 
-	if err := row.Scan(&id, &profileID, &title, &genre, &country, &releaseYear, &watchStatus, &isArchived, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&id, &profileID, &title, &genre, &country, &category, &releaseYear, &watchStatus, &isArchived, &createdAt, &updatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, domain.ErrNotFound
 		}
@@ -170,5 +172,5 @@ func scanMovie(row rowScanner) (*domain.Movie, error) {
 		yearPtr = &v
 	}
 
-	return domain.Reconstitute(id, profileID, title, genre, country, yearPtr, domain.WatchStatus(watchStatus), isArchived, createdAt, updatedAt), nil
+	return domain.Reconstitute(id, profileID, title, genre, country, category, yearPtr, domain.WatchStatus(watchStatus), isArchived, createdAt, updatedAt), nil
 }

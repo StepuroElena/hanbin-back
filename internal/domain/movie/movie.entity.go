@@ -22,6 +22,7 @@ var (
 	ErrGenreRequired      = errors.New("genre is required")
 	ErrGenreTooLong       = errors.New("genre must be 100 characters or fewer")
 	ErrCountryTooLong     = errors.New("country must be 100 characters or fewer")
+	ErrCategoryTooLong    = errors.New("category must be 100 characters or fewer")
 	ErrInvalidYear        = errors.New("release_year must be between 1900 and 2100")
 	ErrProfileIDRequired  = errors.New("profile_id is required")
 	ErrNotFound           = errors.New("movie not found")
@@ -60,6 +61,7 @@ type Movie struct {
 	title       string
 	genre       string
 	country     string // "" = не указана, опциональное поле
+	category    string // "" = не указана, опциональное поле — значение из персонального списка категорий
 	releaseYear *int // nil = не указан
 	watchStatus WatchStatus
 	isArchived  bool
@@ -69,7 +71,7 @@ type Movie struct {
 
 // NewMovie создаёт валидный агрегат Movie. Статус при создании всегда "planned", архив — false,
 // так же, как у дорам при добавлении.
-func NewMovie(profileID int64, title, genre, country string, releaseYear *int) (*Movie, error) {
+func NewMovie(profileID int64, title, genre, country, category string, releaseYear *int) (*Movie, error) {
 	if profileID <= 0 {
 		return nil, ErrProfileIDRequired
 	}
@@ -83,6 +85,9 @@ func NewMovie(profileID int64, title, genre, country string, releaseYear *int) (
 		return nil, err
 	}
 	if err := m.setCountry(country); err != nil {
+		return nil, err
+	}
+	if err := m.setCategory(category); err != nil {
 		return nil, err
 	}
 
@@ -102,13 +107,14 @@ func NewMovie(profileID int64, title, genre, country string, releaseYear *int) (
 }
 
 // Reconstitute восстанавливает Movie из БД без валидации.
-func Reconstitute(id, profileID int64, title, genre, country string, releaseYear *int, watchStatus WatchStatus, isArchived bool, createdAt, updatedAt time.Time) *Movie {
+func Reconstitute(id, profileID int64, title, genre, country, category string, releaseYear *int, watchStatus WatchStatus, isArchived bool, createdAt, updatedAt time.Time) *Movie {
 	return &Movie{
 		id:          id,
 		profileID:   profileID,
 		title:       title,
 		genre:       genre,
 		country:     country,
+		category:    category,
 		releaseYear: releaseYear,
 		watchStatus: watchStatus,
 		isArchived:  isArchived,
@@ -124,6 +130,7 @@ func (m *Movie) ProfileID() int64         { return m.profileID }
 func (m *Movie) Title() string            { return m.title }
 func (m *Movie) Genre() string            { return m.genre }
 func (m *Movie) Country() string          { return m.country }
+func (m *Movie) Category() string         { return m.category }
 func (m *Movie) ReleaseYear() *int        { return m.releaseYear }
 func (m *Movie) WatchStatus() WatchStatus { return m.watchStatus }
 func (m *Movie) IsArchived() bool         { return m.isArchived }
@@ -163,5 +170,16 @@ func (m *Movie) setCountry(country string) error {
 		return ErrCountryTooLong
 	}
 	m.country = country
+	return nil
+}
+
+// setCategory устанавливает категорию фильма (значение из персонального списка movie_categories).
+// Поле опциональное — пустая строка допустима.
+func (m *Movie) setCategory(category string) error {
+	category = strings.TrimSpace(category)
+	if len([]rune(category)) > MaxCountryLength {
+		return ErrCategoryTooLong
+	}
+	m.category = category
 	return nil
 }

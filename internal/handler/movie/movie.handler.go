@@ -264,6 +264,7 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, domain.ErrGenreRequired),
 		errors.Is(err, domain.ErrGenreTooLong),
 		errors.Is(err, domain.ErrCountryTooLong),
+		errors.Is(err, domain.ErrCategoryTooLong),
 		errors.Is(err, domain.ErrInvalidYear),
 		errors.Is(err, domain.ErrInvalidWatchStatus),
 		errors.Is(err, domain.ErrNotArchived),

@@ -12,18 +12,21 @@ import (
 	authhandler          "github.com/hanbin/hanbin-back/internal/handler/auth"
 	dramahandler         "github.com/hanbin/hanbin-back/internal/handler/drama"
 	moviehandler         "github.com/hanbin/hanbin-back/internal/handler/movie"
+	moviecategoryhandler "github.com/hanbin/hanbin-back/internal/handler/moviecategory"
 	scraperhandler       "github.com/hanbin/hanbin-back/internal/handler/scraper"
 	streamingsitehandler "github.com/hanbin/hanbin-back/internal/handler/streamingsite"
 	userhandler          "github.com/hanbin/hanbin-back/internal/handler/user"
 	"github.com/hanbin/hanbin-back/internal/middleware"
 	dramarepo         "github.com/hanbin/hanbin-back/internal/repository/drama"
 	movierepo         "github.com/hanbin/hanbin-back/internal/repository/movie"
+	moviecategoryrepo "github.com/hanbin/hanbin-back/internal/repository/moviecategory"
 	scrapecacherepo   "github.com/hanbin/hanbin-back/internal/repository/scrapecache"
 	streamingsiterepo "github.com/hanbin/hanbin-back/internal/repository/streamingsite"
 	userrepo          "github.com/hanbin/hanbin-back/internal/repository/user"
 	authsvc          "github.com/hanbin/hanbin-back/internal/service/auth"
 	dramasvc         "github.com/hanbin/hanbin-back/internal/service/drama"
 	moviesvc         "github.com/hanbin/hanbin-back/internal/service/movie"
+	moviecategorysvc "github.com/hanbin/hanbin-back/internal/service/moviecategory"
 	scrapersvc       "github.com/hanbin/hanbin-back/internal/service/scraper"
 	streamingsitesvc "github.com/hanbin/hanbin-back/internal/service/streamingsite"
 	usersvc          "github.com/hanbin/hanbin-back/internal/service/user"
@@ -49,17 +52,20 @@ func main() {
 	userRepo          := userrepo.NewPostgresRepository(db)
 	dramaRepo         := dramarepo.NewPostgresRepository(db)
 	movieRepo         := movierepo.NewPostgresRepository(db)
+	movieCategoryRepo := moviecategoryrepo.NewPostgresRepository(db)
 	scrapeCacheRepo   := scrapecacherepo.NewPostgresRepository(db)
 	streamingSiteRepo := streamingsiterepo.NewPostgresRepository(db)
 	userService  := usersvc.NewService(userRepo)
 	dramaService := dramasvc.NewService(dramaRepo)
 	movieService := moviesvc.NewService(movieRepo)
+	movieCategoryService := moviecategorysvc.NewService(movieCategoryRepo)
 	authService  := authsvc.NewService(userRepo)
 	scrapeService        := scrapersvc.NewService(scrapeCacheRepo) // гибрид: cache-aside с TTL поверх internal/scraper
 	streamingSiteService := streamingsitesvc.NewService(streamingSiteRepo)
 	userHandler          := userhandler.NewHandler(userService, dramaService)
 	dramaHandler         := dramahandler.NewHandler(dramaService)
 	movieHandler         := moviehandler.NewHandler(movieService)
+	movieCategoryHandler := moviecategoryhandler.NewHandler(movieCategoryService)
 	authHandler          := authhandler.NewHandler(authService)
 	scrapeHandler        := scraperhandler.NewHandler(scrapeService)
 	streamingSiteHandler := streamingsitehandler.NewHandler(streamingSiteService)
@@ -69,6 +75,7 @@ func main() {
 	authHandler.RegisterRoutes(mux)          // POST /api/v1/auth/register, /api/v1/auth/login
 	userHandler.RegisterRoutes(mux)          // GET  /api/v1/users/me, /api/v1/profiles/...
 	streamingSiteHandler.RegisterRoutes(mux) // GET|POST /api/v1/streaming-sites, PATCH|DELETE /api/v1/streaming-sites/{id}
+	movieCategoryHandler.RegisterRoutes(mux) // GET|POST /api/v1/movie-categories, PATCH|DELETE /api/v1/movie-categories/{id}
 
 	// ВАЖНО: scrapeHandler регистрируется ДО dramaHandler.
 	// Паттерн "GET /api/v1/dramas/scrape" точнее, чем "/api/v1/dramas/",
@@ -89,6 +96,8 @@ func main() {
 	log.Println("  GET /api/v1/dramas/stats")
 	log.Println("  GET|POST /api/v1/streaming-sites")
 	log.Println("  PATCH|DELETE /api/v1/streaming-sites/{id}")
+	log.Println("  GET|POST /api/v1/movie-categories")
+	log.Println("  PATCH|DELETE /api/v1/movie-categories/{id}")
 	log.Println("  GET|POST /api/v1/movies")
 	log.Println("  GET /api/v1/movies/stats")
 	log.Println("  PATCH /api/v1/movies/{id}")
