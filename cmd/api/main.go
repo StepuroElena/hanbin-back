@@ -11,16 +11,19 @@ import (
 
 	authhandler          "github.com/hanbin/hanbin-back/internal/handler/auth"
 	dramahandler         "github.com/hanbin/hanbin-back/internal/handler/drama"
+	moviehandler         "github.com/hanbin/hanbin-back/internal/handler/movie"
 	scraperhandler       "github.com/hanbin/hanbin-back/internal/handler/scraper"
 	streamingsitehandler "github.com/hanbin/hanbin-back/internal/handler/streamingsite"
 	userhandler          "github.com/hanbin/hanbin-back/internal/handler/user"
 	"github.com/hanbin/hanbin-back/internal/middleware"
 	dramarepo         "github.com/hanbin/hanbin-back/internal/repository/drama"
+	movierepo         "github.com/hanbin/hanbin-back/internal/repository/movie"
 	scrapecacherepo   "github.com/hanbin/hanbin-back/internal/repository/scrapecache"
 	streamingsiterepo "github.com/hanbin/hanbin-back/internal/repository/streamingsite"
 	userrepo          "github.com/hanbin/hanbin-back/internal/repository/user"
 	authsvc          "github.com/hanbin/hanbin-back/internal/service/auth"
 	dramasvc         "github.com/hanbin/hanbin-back/internal/service/drama"
+	moviesvc         "github.com/hanbin/hanbin-back/internal/service/movie"
 	scrapersvc       "github.com/hanbin/hanbin-back/internal/service/scraper"
 	streamingsitesvc "github.com/hanbin/hanbin-back/internal/service/streamingsite"
 	usersvc          "github.com/hanbin/hanbin-back/internal/service/user"
@@ -45,15 +48,18 @@ func main() {
 	// ── Dependency Injection ──────────────────────────────────────────────────
 	userRepo          := userrepo.NewPostgresRepository(db)
 	dramaRepo         := dramarepo.NewPostgresRepository(db)
+	movieRepo         := movierepo.NewPostgresRepository(db)
 	scrapeCacheRepo   := scrapecacherepo.NewPostgresRepository(db)
 	streamingSiteRepo := streamingsiterepo.NewPostgresRepository(db)
 	userService  := usersvc.NewService(userRepo)
 	dramaService := dramasvc.NewService(dramaRepo)
+	movieService := moviesvc.NewService(movieRepo)
 	authService  := authsvc.NewService(userRepo)
 	scrapeService        := scrapersvc.NewService(scrapeCacheRepo) // гибрид: cache-aside с TTL поверх internal/scraper
 	streamingSiteService := streamingsitesvc.NewService(streamingSiteRepo)
 	userHandler          := userhandler.NewHandler(userService, dramaService)
 	dramaHandler         := dramahandler.NewHandler(dramaService)
+	movieHandler         := moviehandler.NewHandler(movieService)
 	authHandler          := authhandler.NewHandler(authService)
 	scrapeHandler        := scraperhandler.NewHandler(scrapeService)
 	streamingSiteHandler := streamingsitehandler.NewHandler(streamingSiteService)
@@ -69,6 +75,7 @@ func main() {
 	// поэтому mux (Go 1.22+) выбирает его без Auth-middleware.
 	scrapeHandler.RegisterRoutes(mux) // GET  /api/v1/dramas/scrape  (публичный, без JWT)
 	dramaHandler.RegisterRoutes(mux)  // POST /api/v1/dramas, PATCH /api/v1/dramas/{id}/archive
+	movieHandler.RegisterRoutes(mux)  // GET|POST /api/v1/movies
 
 	httpHandler := middleware.CORS(origins)(mux)
 
@@ -82,6 +89,9 @@ func main() {
 	log.Println("  GET /api/v1/dramas/stats")
 	log.Println("  GET|POST /api/v1/streaming-sites")
 	log.Println("  PATCH|DELETE /api/v1/streaming-sites/{id}")
+	log.Println("  GET|POST /api/v1/movies")
+	log.Println("  GET /api/v1/movies/stats")
+	log.Println("  PATCH /api/v1/movies/{id}")
 	log.Printf("allowed origins: %v", origins)
 
 	if err := http.ListenAndServe(addr, httpHandler); err != nil {
