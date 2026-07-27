@@ -40,9 +40,32 @@ migrate-up:
 	psql "$(DSN)" -f migrations/003_add_auth_to_profiles.up.sql
 	psql "$(DSN)" -f migrations/004_add_archive_fields_to_dramas.up.sql
 	psql "$(DSN)" -f migrations/006_create_scrape_cache.up.sql
+	psql "$(DSN)" -f migrations/007_add_voiceover_to_dramas.up.sql
+	psql "$(DSN)" -f migrations/008_add_poster_url_to_dramas.up.sql
+	psql "$(DSN)" -f migrations/009_add_source_url_to_dramas.up.sql
+	psql "$(DSN)" -f migrations/010_create_streaming_sites.up.sql
+	psql "$(DSN)" -f migrations/011_add_enabled_to_streaming_sites.up.sql
+	psql "$(DSN)" -f migrations/012_remove_dorama24_streaming_sites.up.sql
+	psql "$(DSN)" -f migrations/013_create_movies.up.sql
+	psql "$(DSN)" -f migrations/014_add_watch_status_to_movies.up.sql
+	psql "$(DSN)" -f migrations/015_add_genre_to_movies.up.sql
+	psql "$(DSN)" -f migrations/016_add_archive_field_to_movies.up.sql
+	psql "$(DSN)" -f migrations/017_expand_movie_watch_status.up.sql
+	psql "$(DSN)" -f migrations/018_add_country_to_movies.up.sql
 
 ## migrate-down: откатить все миграции
 migrate-down:
+	psql "$(DSN)" -f migrations/018_add_country_to_movies.down.sql
+	psql "$(DSN)" -f migrations/017_expand_movie_watch_status.down.sql
+	psql "$(DSN)" -f migrations/016_add_archive_field_to_movies.down.sql
+	psql "$(DSN)" -f migrations/015_add_genre_to_movies.down.sql
+	psql "$(DSN)" -f migrations/014_add_watch_status_to_movies.down.sql
+	psql "$(DSN)" -f migrations/013_create_movies.down.sql
+	psql "$(DSN)" -f migrations/011_add_enabled_to_streaming_sites.down.sql
+	psql "$(DSN)" -f migrations/010_create_streaming_sites.down.sql
+	psql "$(DSN)" -f migrations/009_add_source_url_to_dramas.down.sql
+	psql "$(DSN)" -f migrations/008_add_poster_url_to_dramas.down.sql
+	psql "$(DSN)" -f migrations/007_add_voiceover_to_dramas.down.sql
 	psql "$(DSN)" -f migrations/006_create_scrape_cache.down.sql
 	psql "$(DSN)" -f migrations/004_add_archive_fields_to_dramas.down.sql
 	psql "$(DSN)" -f migrations/003_add_auth_to_profiles.down.sql
