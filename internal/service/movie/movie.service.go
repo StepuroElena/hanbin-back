@@ -160,6 +160,79 @@ func (s *Service) SetArchived(ctx context.Context, profileID, movieID int64, isA
 	return &out, nil
 }
 
+// UpdateInput — тело запроса на частичное обновление фильма. Все поля опциональны —
+// передаётся только то, что нужно изменить (тот же паттерн, что и у дорам).
+type UpdateInput struct {
+	Title       *string `json:"title"`
+	Genre       *string `json:"genre"`
+	Country     *string `json:"country"`
+	Category    *string `json:"category"`
+	ReleaseYear *int    `json:"release_year"`
+	ClearYear   bool    `json:"clear_year"` // true = сбросить год (null в JSON нельзя отличить от «не передано»)
+	WatchStatus *string `json:"watch_status"`
+}
+
+// Update применяет частичное обновление фильма — название/жанр/страна/категория/год/статус просмотра
+// — всё одним эндпоинтом, вместо отдельного UpdateStatus выше (тот метод оставлен для совместимости,
+// но больше не вызывается из хендлера). Проверяет принадлежность profileID из токена.
+func (s *Service) Update(ctx context.Context, profileID, movieID int64, in UpdateInput) (*MovieOutput, error) {
+	m, err := s.repo.GetByID(ctx, movieID)
+	if err != nil {
+		return nil, fmt.Errorf("service.Update: %w", err)
+	}
+	if m.ProfileID() != profileID {
+		return nil, fmt.Errorf("service.Update: %w", domain.ErrNotFound)
+	}
+
+	if in.Title != nil {
+		if err := m.SetTitle(*in.Title); err != nil {
+			return nil, fmt.Errorf("service.Update: %w", err)
+		}
+	}
+	if in.Genre != nil {
+		if err := m.SetGenre(*in.Genre); err != nil {
+			return nil, fmt.Errorf("service.Update: %w", err)
+		}
+	}
+	if in.Country != nil {
+		if err := m.SetCountry(*in.Country); err != nil {
+			return nil, fmt.Errorf("service.Update: %w", err)
+		}
+	}
+	if in.Category != nil {
+		if err := m.SetCategory(*in.Category); err != nil {
+			return nil, fmt.Errorf("service.Update: %w", err)
+		}
+	}
+	if in.ClearYear {
+		if err := m.SetReleaseYear(nil); err != nil {
+			return nil, fmt.Errorf("service.Update: %w", err)
+		}
+	} else if in.ReleaseYear != nil {
+		if err := m.SetReleaseYear(in.ReleaseYear); err != nil {
+			return nil, fmt.Errorf("service.Update: %w", err)
+		}
+	}
+	if in.WatchStatus != nil {
+		status, err := domain.ParseWatchStatus(*in.WatchStatus)
+		if err != nil {
+			return nil, fmt.Errorf("service.Update: %w", err)
+		}
+		m.SetWatchStatus(status)
+	}
+
+	if err := s.repo.Update(ctx, m); err != nil {
+		return nil, fmt.Errorf("service.Update: %w", err)
+	}
+
+	updated, err := s.repo.GetByID(ctx, movieID)
+	if err != nil {
+		return nil, fmt.Errorf("service.Update refetch: %w", err)
+	}
+	out := toOutput(updated)
+	return &out, nil
+}
+
 // Delete проверяет, что фильм архивирован, и удаляет его из БД. Если is_archived = false —
 // возвращает domain.ErrNotArchived (400) — так же, как и у дорам.
 func (s *Service) Delete(ctx context.Context, profileID, movieID int64) error {

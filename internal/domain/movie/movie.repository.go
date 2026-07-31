@@ -16,6 +16,10 @@ type Repository interface {
 	// UpdateWatchStatus обновляет статус просмотра фильма.
 	UpdateWatchStatus(ctx context.Context, id int64, status WatchStatus) error
 
+	// Update применяет частичное обновление фильма (название/жанр/страна/категория/год/статус) —
+	// принимает уже изменённый агрегат, пишет все редактируемые поля одним UPDATE.
+	Update(ctx context.Context, m *Movie) error
+
 	// UpdateArchived обновляет флаг is_archived у фильма.
 	UpdateArchived(ctx context.Context, id int64, isArchived bool) error
 

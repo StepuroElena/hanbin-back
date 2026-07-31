@@ -121,6 +121,43 @@ func (r *postgresRepository) UpdateArchived(ctx context.Context, id int64, isArc
 	return nil
 }
 
+// Update пишет все редактируемые поля фильма (название/жанр/страна/категория/год/статус) одним UPDATE.
+// is_archived тут сознательно не трогаем — архив меняется только через отдельный UpdateArchived выше.
+func (r *postgresRepository) Update(ctx context.Context, m *domain.Movie) error {
+	const q = `
+		UPDATE movies SET
+			title        = $1,
+			genre        = $2,
+			country      = $3,
+			category     = $4,
+			release_year = $5,
+			watch_status = $6,
+			updated_at   = $7
+		WHERE id = $8`
+
+	res, err := r.db.ExecContext(ctx, q,
+		m.Title(),
+		m.Genre(),
+		m.Country(),
+		m.Category(),
+		m.ReleaseYear(),
+		string(m.WatchStatus()),
+		time.Now().UTC(),
+		m.ID(),
+	)
+	if err != nil {
+		return fmt.Errorf("movie repository.Update: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("movie repository.Update rows affected: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
 	const q = `DELETE FROM movies WHERE id = $1`
 

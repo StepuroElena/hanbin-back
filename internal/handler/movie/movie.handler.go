@@ -60,7 +60,7 @@ func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
 		}
 		switch r.Method {
 		case http.MethodPatch:
-			h.UpdateStatus(w, r, id)
+			h.Update(w, r, id)
 		case http.MethodDelete:
 			h.Delete(w, r, id)
 		default:
@@ -173,6 +173,9 @@ func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 //	400 Bad Request
 //	401 Unauthorized
 //	404 Not Found
+//
+// БОЛЬШЕ НЕ ВЫЗЫВАЕТСЯ из handleItem — заменён на общий Update ниже, который принимает
+// любой набор полей (title/genre/country/category/release_year/watch_status). Оставлен для совместимости, но мёртвый код.
 func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request, movieID int64) {
 	profileID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok {
@@ -187,6 +190,36 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request, movieID i
 	}
 
 	out, err := h.service.UpdateStatus(r.Context(), profileID, movieID, body)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// Update godoc
+//
+//	PATCH /api/v1/movies/{id}
+//	Header: Authorization: Bearer <token>
+//	Body: UpdateInput (JSON, все поля опциональны — передаётся только то, что нужно изменить)
+//	200 OK  → MovieOutput (JSON)
+//	400 Bad Request
+//	401 Unauthorized
+//	404 Not Found
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request, movieID int64) {
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var body svc.UpdateInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	out, err := h.service.Update(r.Context(), profileID, movieID, body)
 	if err != nil {
 		writeServiceError(w, err)
 		return

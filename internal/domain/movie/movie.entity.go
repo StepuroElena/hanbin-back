@@ -183,3 +183,30 @@ func (m *Movie) setCategory(category string) error {
 	m.category = category
 	return nil
 }
+
+// ── Экспортируемые сеттеры (для частичного обновления через PATCH /movies/{id}) ──
+// Та же валидация, что и при создании — просто публичные обёртки над приватными setX.
+
+func (m *Movie) SetTitle(title string) error    { return m.setTitle(title) }
+func (m *Movie) SetGenre(genre string) error    { return m.setGenre(genre) }
+func (m *Movie) SetCountry(country string) error { return m.setCountry(country) }
+func (m *Movie) SetCategory(category string) error { return m.setCategory(category) }
+
+// SetReleaseYear обновляет год выпуска. nil сбрасывает поле (год не указан).
+func (m *Movie) SetReleaseYear(year *int) error {
+	if year == nil {
+		m.releaseYear = nil
+		return nil
+	}
+	if *year < MinYear || *year > MaxYear {
+		return ErrInvalidYear
+	}
+	v := *year
+	m.releaseYear = &v
+	return nil
+}
+
+// SetWatchStatus обновляет статус просмотра — вызывающий код уже провалидировал строку через ParseWatchStatus.
+func (m *Movie) SetWatchStatus(status WatchStatus) {
+	m.watchStatus = status
+}
