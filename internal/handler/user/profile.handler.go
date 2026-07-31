@@ -29,7 +29,11 @@ func NewHandler(service *svc.Service, dramaService *dramasvc.Service) *Handler {
 // RegisterRoutes регистрирует маршруты.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/profiles", h.handleCollection)
-	mux.HandleFunc("/api/v1/profiles/", h.handleItem)
+	// /api/v1/profiles/{id} раньше был полностью без авторизации — любой мог послать PATCH
+	// с чужим id и поменять чужое имя/увидеть/удалить чужой профиль без токена.
+	// Теперь требует валидный JWT, и handleItem дополнительно сверяет, что :id в пути
+	// совпадает с profile_id из токена — чтобы авторизованный пользователь не мог править чужой профиль.
+	mux.Handle("/api/v1/profiles/", middleware.Auth(http.HandlerFunc(h.handleItem)))
 	mux.Handle("/api/v1/users/me", middleware.Auth(http.HandlerFunc(h.Me)))
 }
 
@@ -48,6 +52,19 @@ func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id: must be a positive integer")
 		return
 	}
+
+	// Владелец токена может читать/менять/удалять только свой собственный профиль —
+	// без этой проверки любой авторизованный пользователь мог бы подставить чужой id в пути.
+	profileID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if profileID != id {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
 	switch r.Method {
 	case http.MethodGet:
 		h.GetByID(w, r, id)
