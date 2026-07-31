@@ -82,6 +82,11 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (*Profil
 			return nil, fmt.Errorf("service.Update: %w", err)
 		}
 	}
+	if in.Email != "" {
+		if err := profile.SetEmail(in.Email); err != nil {
+			return nil, fmt.Errorf("service.Update: %w", err)
+		}
+	}
 	if err := s.repo.Update(ctx, profile); err != nil {
 		return nil, fmt.Errorf("service.Update: %w", err)
 	}

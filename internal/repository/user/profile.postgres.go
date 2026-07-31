@@ -54,9 +54,12 @@ func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*dom
 }
 
 func (r *postgresRepository) Update(ctx context.Context, p *domain.Profile) error {
-	const q = `UPDATE profiles SET name = $1, updated_at = $2 WHERE id = $3`
-	_, err := r.db.ExecContext(ctx, q, p.Name(), p.UpdatedAt(), p.ID())
+	const q = `UPDATE profiles SET name = $1, email = $2, updated_at = $3 WHERE id = $4`
+	_, err := r.db.ExecContext(ctx, q, p.Name(), p.Email(), p.UpdatedAt(), p.ID())
 	if err != nil {
+		if isUniqueViolation(err) {
+			return domain.ErrEmailNotUnique
+		}
 		return fmt.Errorf("repository.Update: %w", err)
 	}
 	return nil

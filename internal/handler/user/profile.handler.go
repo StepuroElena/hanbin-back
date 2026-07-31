@@ -255,6 +255,9 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "profile already exists for this user")
 	case errors.Is(err, domain.ErrNameRequired),
 		errors.Is(err, domain.ErrNameTooLong),
+		errors.Is(err, domain.ErrEmailRequired),
+		errors.Is(err, domain.ErrEmailTooLong),
+		errors.Is(err, domain.ErrEmailInvalid),
 		errors.Is(err, domain.ErrUserIDRequired):
 		writeError(w, http.StatusBadRequest, unwrapMessage(err))
 	default:
