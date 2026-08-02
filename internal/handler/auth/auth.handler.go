@@ -24,10 +24,14 @@ func NewHandler(service *svc.Service) *Handler {
 //	POST /api/v1/auth/register
 //	POST /api/v1/auth/login
 //	POST /api/v1/auth/set-password
+//	POST /api/v1/auth/forgot-password
+//	POST /api/v1/auth/reset-password
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/auth/register", h.handleRegister)
 	mux.HandleFunc("/api/v1/auth/login", h.handleLogin)
 	mux.HandleFunc("/api/v1/auth/set-password", h.handleSetPassword)
+	mux.HandleFunc("/api/v1/auth/forgot-password", h.handleForgotPassword)
+	mux.HandleFunc("/api/v1/auth/reset-password", h.handleResetPassword)
 }
 
 // handleRegister — POST /api/v1/auth/register
@@ -91,6 +95,52 @@ func (h *Handler) handleSetPassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// handleForgotPassword — POST /api/v1/auth/forgot-password
+// Требует email существующего аккаунта — если нет такого пользователя, вернётся 404.
+//
+//	Body: { "email": "..." }
+//	200 OK → { "reset_link": "...", "expires_at": "..." } — ВРЕМЕННО, пока нет email-отправки (см. сервис)
+func (h *Handler) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body svc.ForgotPasswordInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	out, err := h.service.ForgotPassword(r.Context(), body)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleResetPassword — POST /api/v1/auth/reset-password
+// Устанавливает новый пароль по токену из ссылки восстановления.
+//
+//	Body: { "token": "...", "password": "..." }
+//	200 OK → { "ok": true }
+//	400 Bad Request — токен невалиден/истёк/уже использован, или пароль слишком короткий
+func (h *Handler) handleResetPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body svc.ResetPasswordInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.ResetPassword(r.Context(), body); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 type errorResponse struct {
@@ -113,6 +163,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusUnauthorized, err.Error())
 	case errors.Is(err, authdomain.ErrPasswordRequired),
 		errors.Is(err, authdomain.ErrPasswordTooShort),
+		errors.Is(err, authdomain.ErrTokenInvalid),
+		errors.Is(err, authdomain.ErrTokenExpired),
 		errors.Is(err, userdomain.ErrNameRequired),
 		errors.Is(err, userdomain.ErrEmailRequired),
 		errors.Is(err, userdomain.ErrEmailInvalid),
