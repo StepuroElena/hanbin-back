@@ -10,7 +10,7 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 			origin := r.Header.Get("Origin")
 
 			// Разрешаем только перечисленные origins
-			if isAllowed(origin, allowedOrigins) {
+			if IsAllowedOrigin(origin, allowedOrigins) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 			}
 
@@ -29,7 +29,11 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	}
 }
 
-func isAllowed(origin string, allowed []string) bool {
+// IsAllowedOrigin проверяет, что origin входит в список разрешённых (или там есть "*").
+// Экспортирована, так как используется ещё и в auth-сервисе — чтобы ссылка восстановления
+// пароля вела на тот же хост, с которого реально пришёл запрос (localhost в dev, прод-домен в проде),
+// а не на жёстко зашитый в .env FRONTEND_URL.
+func IsAllowedOrigin(origin string, allowed []string) bool {
 	for _, a := range allowed {
 		if a == "*" || a == origin {
 			return true

@@ -16,7 +16,9 @@ import (
 	scraperhandler       "github.com/hanbin/hanbin-back/internal/handler/scraper"
 	streamingsitehandler "github.com/hanbin/hanbin-back/internal/handler/streamingsite"
 	userhandler          "github.com/hanbin/hanbin-back/internal/handler/user"
+	"github.com/hanbin/hanbin-back/internal/mailer"
 	"github.com/hanbin/hanbin-back/internal/middleware"
+	authrepo          "github.com/hanbin/hanbin-back/internal/repository/auth"
 	dramarepo         "github.com/hanbin/hanbin-back/internal/repository/drama"
 	movierepo         "github.com/hanbin/hanbin-back/internal/repository/movie"
 	moviecategoryrepo "github.com/hanbin/hanbin-back/internal/repository/moviecategory"
@@ -50,6 +52,7 @@ func main() {
 
 	// ── Dependency Injection ──────────────────────────────────────────────────
 	userRepo          := userrepo.NewPostgresRepository(db)
+	resetTokenRepo    := authrepo.NewPostgresResetTokenRepository(db)
 	dramaRepo         := dramarepo.NewPostgresRepository(db)
 	movieRepo         := movierepo.NewPostgresRepository(db)
 	movieCategoryRepo := moviecategoryrepo.NewPostgresRepository(db)
@@ -59,7 +62,7 @@ func main() {
 	dramaService := dramasvc.NewService(dramaRepo)
 	movieService := moviesvc.NewService(movieRepo)
 	movieCategoryService := moviecategorysvc.NewService(movieCategoryRepo)
-	authService  := authsvc.NewService(userRepo)
+	authService  := authsvc.NewService(userRepo, resetTokenRepo, mailer.NewFromEnv(), origins)
 	scrapeService        := scrapersvc.NewService(scrapeCacheRepo) // гибрид: cache-aside с TTL поверх internal/scraper
 	streamingSiteService := streamingsitesvc.NewService(streamingSiteRepo)
 	userHandler          := userhandler.NewHandler(userService, dramaService)
@@ -90,6 +93,9 @@ func main() {
 	log.Println("registered routes:")
 	log.Println("  POST /api/v1/auth/register")
 	log.Println("  POST /api/v1/auth/login")
+	log.Println("  POST /api/v1/auth/set-password")
+	log.Println("  POST /api/v1/auth/forgot-password")
+	log.Println("  POST /api/v1/auth/reset-password")
 	log.Println("  POST /api/v1/profiles")
 	log.Println("  GET|PATCH|DELETE /api/v1/profiles/{id}")
 	log.Println("  GET /api/v1/users/me")

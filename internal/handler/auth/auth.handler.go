@@ -24,10 +24,14 @@ func NewHandler(service *svc.Service) *Handler {
 //	POST /api/v1/auth/register
 //	POST /api/v1/auth/login
 //	POST /api/v1/auth/set-password
+//	POST /api/v1/auth/forgot-password
+//	POST /api/v1/auth/reset-password
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/auth/register", h.handleRegister)
 	mux.HandleFunc("/api/v1/auth/login", h.handleLogin)
 	mux.HandleFunc("/api/v1/auth/set-password", h.handleSetPassword)
+	mux.HandleFunc("/api/v1/auth/forgot-password", h.handleForgotPassword)
+	mux.HandleFunc("/api/v1/auth/reset-password", h.handleResetPassword)
 }
 
 // handleRegister — POST /api/v1/auth/register
@@ -91,6 +95,72 @@ func (h *Handler) handleSetPassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// handleForgotPassword — POST /api/v1/auth/forgot-password
+// Требует email существующего аккаунта — если нет такого пользователя, вернётся 404.
+//
+//	Body: { "email": "..." }
+//	200 OK → { "reset_link": "...", "expires_at": "..." } — ВРЕМЕННО, пока нет email-отправки (см. сервис)
+func (h *Handler) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body svc.ForgotPasswordInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	// Origin браузер проставляет сам — используется, чтобы ссылка восстановления вела на тот хост,
+	// с которого реально пришёл запрос (см. сервис.ForgotPassword для валидации).
+	out, err := h.service.ForgotPassword(r.Context(), body, r.Header.Get("Origin"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleResetPassword — /api/v1/auth/reset-password
+//
+//	GET  ?token=...              — проверить токен до того, как показать форму (не меняет состояние)
+//	             200 OK → { "email": "..." }
+//	             400 Bad Request — токен невалиден/истёк/уже использован
+//	POST Body: { "token": "...", "password": "..." } — собственно смена пароля
+//	             200 OK → { "ok": true }
+func (h *Handler) handleResetPassword(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.handleValidateResetToken(w, r)
+	case http.MethodPost:
+		h.handleDoResetPassword(w, r)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (h *Handler) handleValidateResetToken(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	email, err := h.service.ValidateResetToken(r.Context(), token)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"email": email})
+}
+
+func (h *Handler) handleDoResetPassword(w http.ResponseWriter, r *http.Request) {
+	var body svc.ResetPasswordInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := h.service.ResetPassword(r.Context(), body); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 type errorResponse struct {
@@ -113,6 +183,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusUnauthorized, err.Error())
 	case errors.Is(err, authdomain.ErrPasswordRequired),
 		errors.Is(err, authdomain.ErrPasswordTooShort),
+		errors.Is(err, authdomain.ErrTokenInvalid),
+		errors.Is(err, authdomain.ErrTokenExpired),
 		errors.Is(err, userdomain.ErrNameRequired),
 		errors.Is(err, userdomain.ErrEmailRequired),
 		errors.Is(err, userdomain.ErrEmailInvalid),
