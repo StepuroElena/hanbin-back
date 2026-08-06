@@ -20,10 +20,22 @@ import (
 type Service struct {
 	repo           userdomain.Repository
 	resetTokenRepo authdomain.ResetTokenRepository
+	mailer         Mailer
+	allowedOrigins []string
 }
 
-func NewService(repo userdomain.Repository, resetTokenRepo authdomain.ResetTokenRepository) *Service {
-	return &Service{repo: repo, resetTokenRepo: resetTokenRepo}
+// Mailer — минимальный интерфейс отправки писем, чтобы сервис не зависел напрямую от
+// конкретного провайдера (см. internal/mailer.ResendMailer, он реализует этот интерфейс
+// структурно, без явной зависимости от этого пакета).
+type Mailer interface {
+	Enabled() bool
+	Send(to, subject, htmlBody string) error
+}
+
+// allowedOrigins — тот же список, что и у CORS-middleware (ALLOWED_ORIGINS из .env) — используется
+// в ForgotPassword, чтобы ссылка восстановления вела на тот хост, с которого реально пришёл запрос.
+func NewService(repo userdomain.Repository, resetTokenRepo authdomain.ResetTokenRepository, mailer Mailer, allowedOrigins []string) *Service {
+	return &Service{repo: repo, resetTokenRepo: resetTokenRepo, mailer: mailer, allowedOrigins: allowedOrigins}
 }
 
 // ── DTO ───────────────────────────────────────────────────────────────────────
@@ -63,10 +75,8 @@ type ForgotPasswordInput struct {
 
 // ForgotPasswordOutput — ответ на запрос восстановления.
 //
-// ВРЕМЕННО (пока не подключён реальный email-провайдер, см. заметку в ForgotPassword): ResetLink
-// отдаётся прямо в API-ответе, чтобы фронт мог показать его в UI вместо письма. Как только появится
-// email-сервис — убрать это поле из ответа и реально отправлять письмо на Email пользователя,
-// не раскрывая ссылку через API.
+// ResetLink заполнен только когда мейлер не настроен или отправка провалилась — фронт в этом случае показывает
+// ссылку прямо в UI (см. ForgotPasswordModal.js). Когда письмо реально ушло — поле пустое.
 type ForgotPasswordOutput struct {
 	ResetLink string `json:"reset_link"`
 	ExpiresAt string `json:"expires_at"`
@@ -166,17 +176,25 @@ func (s *Service) SetPassword(ctx context.Context, in SetPasswordInput) error {
 }
 
 // ForgotPassword проверяет, что email существует, генерирует одноразовый токен восстановления
-// (живёт passwordResetTTL) и возвращает ссылку на страницу смены пароля.
+// (живёт passwordResetTTL) и отправляет письмо со ссылкой на страницу смены пароля.
 //
 // Если email не найден — возвращает userdomain.ErrNotFound (404 на уровне хендлера), как явно
 // просил продукт: пользователь должен видеть ошибку, если такой почты нет. Это раскрывает факт
 // существования аккаунта по email (user enumeration) — сознательный компромисс по запросу продукта,
 // не техническое упущение.
 //
-// ВРЕМЕННО: пока не подключён реальный email-провайдер, письмо не отправляется — вместо этого
-// ссылка логируется на сервере и возвращается прямо в ответе (см. ForgotPasswordOutput). Как только
-// появится email-сервис (Resend/SendGrid/SMTP) — убрать ResetLink из ответа и отправлять его письмом.
-func (s *Service) ForgotPassword(ctx context.Context, in ForgotPasswordInput) (*ForgotPasswordOutput, error) {
+// Если мейлер настроен (RESEND_API_KEY задан) — письмо реально отправляется, и ResetLink в ответе
+// остаётся пустым (ссылка больше не раскрывается через API). Если мейлера нет или отправка
+// сорвалась — фолбэк на старое поведение: ссылка логируется и возвращается в ответе, чтобы локальная
+// разработка без ключа не ломалась.
+//
+// requestOrigin — заголовок Origin из HTTP-запроса (см. handler). Если он есть и входит в список
+// разрешённых (allowedOrigins, те же ALLOWED_ORIGINS, что и у CORS) — ссылка строится именно на него:
+// таким образом она всегда ведёт на тот хост, с которого реально пришёл запрос (localhost в dev, прод-домен
+// в проде) — без ручной настройки FRONTEND_URL для каждого окружения. Если origin пуст или не
+// в списке — фолбэк на frontendBaseURL() (env FRONTEND_URL или прод-домен по умолчанию).
+// Не доверяем origin вслепую — иначе кто-то мог бы подсунуть в письмо жертвы ссылку на фишинг-клон.
+func (s *Service) ForgotPassword(ctx context.Context, in ForgotPasswordInput, requestOrigin string) (*ForgotPasswordOutput, error) {
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	if email == "" {
 		return nil, userdomain.ErrEmailRequired
@@ -197,15 +215,59 @@ func (s *Service) ForgotPassword(ctx context.Context, in ForgotPasswordInput) (*
 		return nil, fmt.Errorf("auth.ForgotPassword: %w", err)
 	}
 
-	resetLink := fmt.Sprintf("%s/#/reset-password?token=%s", frontendBaseURL(), token)
+	base := frontendBaseURL()
+	if requestOrigin != "" && middleware.IsAllowedOrigin(requestOrigin, s.allowedOrigins) {
+		base = strings.TrimSuffix(requestOrigin, "/")
+	}
+	resetLink := fmt.Sprintf("%s/#/reset-password?token=%s", base, token)
 
-	// ВРЕМЕННО вместо реальной отправки письма — см. заметку в доке метода выше.
-	log.Printf("[auth] password reset requested for %s — link: %s (expires %s)", profile.Email(), resetLink, expiresAt.Format(time.RFC3339))
+	if s.mailer != nil && s.mailer.Enabled() {
+		subject := "Восстановление пароля — Hanbin"
+		html := fmt.Sprintf(`<p>Кто-то (надеемся, что это вы) запросил восстановление пароля для аккаунта Hanbin.</p>
+<p><a href="%s">Установить новый пароль</a></p>
+<p>Ссылка действительна 1 час. Если это были не вы — просто проигнорируйте это письмо.</p>`, resetLink)
 
-	return &ForgotPasswordOutput{
-		ResetLink: resetLink,
-		ExpiresAt: expiresAt.Format(time.RFC3339),
-	}, nil
+		if err := s.mailer.Send(profile.Email(), subject, html); err != nil {
+			// Не роняем весь запрос из-за сбоя почты — токен уже создан и валиден, просто логируем и отдаём
+			// ссылку в ответе как fallback, чтобы пользователь не остался ни с чем.
+			log.Printf("[auth] failed to send reset email to %s: %v (link: %s)", profile.Email(), err, resetLink)
+			return &ForgotPasswordOutput{ResetLink: resetLink, ExpiresAt: expiresAt.Format(time.RFC3339)}, nil
+		}
+
+		log.Printf("[auth] password reset email sent to %s", profile.Email())
+		return &ForgotPasswordOutput{ExpiresAt: expiresAt.Format(time.RFC3339)}, nil
+	}
+
+	// Фолбэк для дев-окружения без RESEND_API_KEY — ссылка логируется и возвращается в ответе.
+	log.Printf("[auth] RESEND_API_KEY not set — password reset link for %s: %s (expires %s)", profile.Email(), resetLink, expiresAt.Format(time.RFC3339))
+	return &ForgotPasswordOutput{ResetLink: resetLink, ExpiresAt: expiresAt.Format(time.RFC3339)}, nil
+}
+
+// ValidateResetToken проверяет токен (существует, не использован, не истёк) и возвращает email аккаунта, чтобы
+// фронт мог показать в модалке «Меняем пароль для ...» до того, как пользователь введёт новый
+// пароль. Чисто чтение — ничего не меняет и не помечает токен использованным.
+func (s *Service) ValidateResetToken(ctx context.Context, token string) (string, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", authdomain.ErrTokenInvalid
+	}
+
+	rt, err := s.resetTokenRepo.GetByToken(ctx, token)
+	if err != nil {
+		return "", err // authdomain.ErrTokenInvalid из репозитория, если токена нет
+	}
+	if rt.UsedAt != nil {
+		return "", authdomain.ErrTokenInvalid
+	}
+	if time.Now().UTC().After(rt.ExpiresAt) {
+		return "", authdomain.ErrTokenExpired
+	}
+
+	profile, err := s.repo.GetByID(ctx, rt.ProfileID)
+	if err != nil {
+		return "", fmt.Errorf("auth.ValidateResetToken: %w", err)
+	}
+	return profile.Email(), nil
 }
 
 // ResetPassword проверяет токен (существует, не использован, не истёк) и устанавливает новый пароль.

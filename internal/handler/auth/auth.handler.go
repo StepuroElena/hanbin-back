@@ -110,7 +110,9 @@ func (h *Handler) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	out, err := h.service.ForgotPassword(r.Context(), body)
+	// Origin браузер проставляет сам — используется, чтобы ссылка восстановления вела на тот хост,
+	// с которого реально пришёл запрос (см. сервис.ForgotPassword для валидации).
+	out, err := h.service.ForgotPassword(r.Context(), body, r.Header.Get("Origin"))
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -118,17 +120,35 @@ func (h *Handler) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// handleResetPassword — POST /api/v1/auth/reset-password
-// Устанавливает новый пароль по токену из ссылки восстановления.
+// handleResetPassword — /api/v1/auth/reset-password
 //
-//	Body: { "token": "...", "password": "..." }
-//	200 OK → { "ok": true }
-//	400 Bad Request — токен невалиден/истёк/уже использован, или пароль слишком короткий
+//	GET  ?token=...              — проверить токен до того, как показать форму (не меняет состояние)
+//	             200 OK → { "email": "..." }
+//	             400 Bad Request — токен невалиден/истёк/уже использован
+//	POST Body: { "token": "...", "password": "..." } — собственно смена пароля
+//	             200 OK → { "ok": true }
 func (h *Handler) handleResetPassword(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	switch r.Method {
+	case http.MethodGet:
+		h.handleValidateResetToken(w, r)
+	case http.MethodPost:
+		h.handleDoResetPassword(w, r)
+	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (h *Handler) handleValidateResetToken(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	email, err := h.service.ValidateResetToken(r.Context(), token)
+	if err != nil {
+		writeServiceError(w, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, map[string]string{"email": email})
+}
+
+func (h *Handler) handleDoResetPassword(w http.ResponseWriter, r *http.Request) {
 	var body svc.ResetPasswordInput
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")

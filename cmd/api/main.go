@@ -16,6 +16,7 @@ import (
 	scraperhandler       "github.com/hanbin/hanbin-back/internal/handler/scraper"
 	streamingsitehandler "github.com/hanbin/hanbin-back/internal/handler/streamingsite"
 	userhandler          "github.com/hanbin/hanbin-back/internal/handler/user"
+	"github.com/hanbin/hanbin-back/internal/mailer"
 	"github.com/hanbin/hanbin-back/internal/middleware"
 	authrepo          "github.com/hanbin/hanbin-back/internal/repository/auth"
 	dramarepo         "github.com/hanbin/hanbin-back/internal/repository/drama"
@@ -61,7 +62,7 @@ func main() {
 	dramaService := dramasvc.NewService(dramaRepo)
 	movieService := moviesvc.NewService(movieRepo)
 	movieCategoryService := moviecategorysvc.NewService(movieCategoryRepo)
-	authService  := authsvc.NewService(userRepo, resetTokenRepo)
+	authService  := authsvc.NewService(userRepo, resetTokenRepo, mailer.NewFromEnv(), origins)
 	scrapeService        := scrapersvc.NewService(scrapeCacheRepo) // гибрид: cache-aside с TTL поверх internal/scraper
 	streamingSiteService := streamingsitesvc.NewService(streamingSiteRepo)
 	userHandler          := userhandler.NewHandler(userService, dramaService)
