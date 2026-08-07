@@ -57,7 +57,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*ProfileOutput, e
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
 
-out := toOutput(domain.Reconstitute(id, profile.Name(), profile.Email(), "", profile.CreatedAt(), profile.UpdatedAt()))
+out := toOutput(domain.Reconstitute(id, profile.Name(), profile.Email(), "", nil, profile.CreatedAt(), profile.UpdatedAt()))
 	return &out, nil
 }
 

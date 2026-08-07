@@ -51,8 +51,9 @@ func main() {
 	log.Println("connected to database")
 
 	// ── Dependency Injection ──────────────────────────────────────────────────
-	userRepo          := userrepo.NewPostgresRepository(db)
-	resetTokenRepo    := authrepo.NewPostgresResetTokenRepository(db)
+	userRepo              := userrepo.NewPostgresRepository(db)
+	resetTokenRepo        := authrepo.NewPostgresResetTokenRepository(db)
+	confirmationTokenRepo := authrepo.NewPostgresConfirmationTokenRepository(db)
 	dramaRepo         := dramarepo.NewPostgresRepository(db)
 	movieRepo         := movierepo.NewPostgresRepository(db)
 	movieCategoryRepo := moviecategoryrepo.NewPostgresRepository(db)
@@ -62,7 +63,7 @@ func main() {
 	dramaService := dramasvc.NewService(dramaRepo)
 	movieService := moviesvc.NewService(movieRepo)
 	movieCategoryService := moviecategorysvc.NewService(movieCategoryRepo)
-	authService  := authsvc.NewService(userRepo, resetTokenRepo, mailer.NewFromEnv(), origins)
+	authService  := authsvc.NewService(userRepo, resetTokenRepo, confirmationTokenRepo, mailer.NewFromEnv(), origins)
 	scrapeService        := scrapersvc.NewService(scrapeCacheRepo) // гибрид: cache-aside с TTL поверх internal/scraper
 	streamingSiteService := streamingsitesvc.NewService(streamingSiteRepo)
 	userHandler          := userhandler.NewHandler(userService, dramaService)
@@ -96,6 +97,7 @@ func main() {
 	log.Println("  POST /api/v1/auth/set-password")
 	log.Println("  POST /api/v1/auth/forgot-password")
 	log.Println("  POST /api/v1/auth/reset-password")
+	log.Println("  GET  /api/v1/auth/confirm-email")
 	log.Println("  POST /api/v1/profiles")
 	log.Println("  GET|PATCH|DELETE /api/v1/profiles/{id}")
 	log.Println("  GET /api/v1/users/me")

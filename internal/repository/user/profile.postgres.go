@@ -42,13 +42,13 @@ p.Name(), p.Email(), p.PasswordHash(), p.CreatedAt(), p.UpdatedAt(),
 }
 
 func (r *postgresRepository) GetByID(ctx context.Context, id int64) (*domain.Profile, error) {
-const q = `SELECT id, name, email, password_hash, created_at, updated_at FROM profiles WHERE id = $1`
+const q = `SELECT id, name, email, password_hash, email_confirmed_at, created_at, updated_at FROM profiles WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, q, id)
 	return scanProfile(row)
 }
 
 func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*domain.Profile, error) {
-	const q = `SELECT id, name, email, password_hash, created_at, updated_at FROM profiles WHERE email = $1`
+	const q = `SELECT id, name, email, password_hash, email_confirmed_at, created_at, updated_at FROM profiles WHERE email = $1`
 	row := r.db.QueryRowContext(ctx, q, email)
 	return scanProfile(row)
 }
@@ -79,6 +79,20 @@ func (r *postgresRepository) UpdatePassword(ctx context.Context, id int64, passw
 	return nil
 }
 
+func (r *postgresRepository) ConfirmEmail(ctx context.Context, id int64) error {
+	const q = `UPDATE profiles SET email_confirmed_at = $1, updated_at = $1 WHERE id = $2`
+
+	res, err := r.db.ExecContext(ctx, q, time.Now().UTC(), id)
+	if err != nil {
+		return fmt.Errorf("repository.ConfirmEmail: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
 	const q = `DELETE FROM profiles WHERE id = $1`
 	res, err := r.db.ExecContext(ctx, q, id)
@@ -100,20 +114,26 @@ type rowScanner interface {
 
 func scanProfile(row rowScanner) (*domain.Profile, error) {
 	var (
-id           int64
-		name         string
-		email        string
-		passwordHash string
-		createdAt    time.Time
-		updatedAt    time.Time
+id               int64
+		name             string
+		email            string
+		passwordHash     string
+		emailConfirmedAt sql.NullTime
+		createdAt        time.Time
+		updatedAt        time.Time
 	)
-	if err := row.Scan(&id, &name, &email, &passwordHash, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&id, &name, &email, &passwordHash, &emailConfirmedAt, &createdAt, &updatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, domain.ErrNotFound
 		}
 		return nil, fmt.Errorf("repository.scan: %w", err)
 	}
-return domain.Reconstitute(id, name, email, passwordHash, createdAt, updatedAt), nil
+	var confirmedAt *time.Time
+	if emailConfirmedAt.Valid {
+		t := emailConfirmedAt.Time
+		confirmedAt = &t
+	}
+return domain.Reconstitute(id, name, email, passwordHash, confirmedAt, createdAt, updatedAt), nil
 }
 
 func isUniqueViolation(err error) bool {
