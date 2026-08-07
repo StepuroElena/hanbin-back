@@ -22,6 +22,10 @@ type Repository interface {
 	// UpdatePassword обновляет password_hash для профиля по ID.
 	UpdatePassword(ctx context.Context, id int64, passwordHash string) error
 
+	// ConfirmEmail проставляет email_confirmed_at = текущее время для профиля по ID.
+	// Вызывается после успешной валидации токена подтверждения (см. auth.Service.ConfirmEmail).
+	ConfirmEmail(ctx context.Context, id int64) error
+
 	// Delete удаляет Profile по ID.
 	Delete(ctx context.Context, id int64) error
 }

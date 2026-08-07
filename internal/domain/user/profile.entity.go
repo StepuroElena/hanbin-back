@@ -28,15 +28,18 @@ var (
 )
 // Profile — агрегат пользователя.
 type Profile struct {
-	id           int64
-	name         string
-	email        string
-	passwordHash string
-	createdAt    time.Time
-	updatedAt    time.Time
+	id               int64
+	name             string
+	email            string
+	passwordHash     string
+	emailConfirmedAt *time.Time // nil = почта ещё не подтверждена
+	createdAt        time.Time
+	updatedAt        time.Time
 }
 // NewProfile создаёт валидный Profile без сохранения в БД.
 // passwordHash — уже захешированный пароль (bcrypt), передаётся из сервиса.
+// Новый профиль всегда создаётся с неподтверждённой почтой (emailConfirmedAt = nil) —
+// подтверждение проставляется отдельно, через Profile.ConfirmEmail() после перехода по ссылке из письма.
 func NewProfile(name, email, passwordHash string) (*Profile, error) {
 	p := &Profile{}
 	if err := p.SetName(name); err != nil {
@@ -55,15 +58,17 @@ func NewProfile(name, email, passwordHash string) (*Profile, error) {
 	return p, nil
 }
 
-// Reconstitute восстанавливает Profile из БД без валидации.
-func Reconstitute(id int64, name, email, passwordHash string, createdAt, updatedAt time.Time) *Profile {
+// Reconstitute восстанавливает Profile из БД без валидации. emailConfirmedAt — nil, если почта ещё
+// не подтверждена (см. Profile.IsEmailConfirmed).
+func Reconstitute(id int64, name, email, passwordHash string, emailConfirmedAt *time.Time, createdAt, updatedAt time.Time) *Profile {
 	return &Profile{
-		id:           id,
-		name:         name,
-		email:        email,
-		passwordHash: passwordHash,
-		createdAt:    createdAt,
-		updatedAt:    updatedAt,
+		id:               id,
+		name:             name,
+		email:            email,
+		passwordHash:     passwordHash,
+		emailConfirmedAt: emailConfirmedAt,
+		createdAt:        createdAt,
+		updatedAt:        updatedAt,
 	}
 }
 // ── Геттеры ──────────────────────────────────────────────────────────────────
@@ -73,6 +78,12 @@ func (p *Profile) Email() string        { return p.email }
 func (p *Profile) PasswordHash() string { return p.passwordHash }
 func (p *Profile) CreatedAt() time.Time { return p.createdAt }
 func (p *Profile) UpdatedAt() time.Time { return p.updatedAt }
+
+// EmailConfirmedAt — момент подтверждения почты, nil если ещё не подтверждена.
+func (p *Profile) EmailConfirmedAt() *time.Time { return p.emailConfirmedAt }
+
+// IsEmailConfirmed — удобный булев геттер поверх EmailConfirmedAt.
+func (p *Profile) IsEmailConfirmed() bool { return p.emailConfirmedAt != nil }
 
 // ── Сеттеры ───────────────────────────────────────────────────────────────────
 

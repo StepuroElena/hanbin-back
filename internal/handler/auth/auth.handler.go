@@ -26,12 +26,14 @@ func NewHandler(service *svc.Service) *Handler {
 //	POST /api/v1/auth/set-password
 //	POST /api/v1/auth/forgot-password
 //	POST /api/v1/auth/reset-password
+//	GET  /api/v1/auth/confirm-email
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/auth/register", h.handleRegister)
 	mux.HandleFunc("/api/v1/auth/login", h.handleLogin)
 	mux.HandleFunc("/api/v1/auth/set-password", h.handleSetPassword)
 	mux.HandleFunc("/api/v1/auth/forgot-password", h.handleForgotPassword)
 	mux.HandleFunc("/api/v1/auth/reset-password", h.handleResetPassword)
+	mux.HandleFunc("/api/v1/auth/confirm-email", h.handleConfirmEmail)
 }
 
 // handleRegister — POST /api/v1/auth/register
@@ -45,7 +47,9 @@ func (h *Handler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	out, err := h.service.Register(r.Context(), body)
+	// Origin браузер проставляет сам — используется, чтобы ссылка подтверждения почты вела на тот хост,
+	// с которого реально пришёл запрос (см. сервис.Register для валидации).
+	out, err := h.service.Register(r.Context(), body, r.Header.Get("Origin"))
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -161,6 +165,25 @@ func (h *Handler) handleDoResetPassword(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// handleConfirmEmail — GET /api/v1/auth/confirm-email?token=...
+// Переход по ссылке из письма подтверждения — помечает почту подтверждённой, в отличие от
+// handleValidateResetToken это действие с побочным эффектом (одинразовое использование токена), а не чтение.
+//
+//	200 OK → { "ok": true }
+//	400 Bad Request — токен невалиден/истёк/уже использован
+func (h *Handler) handleConfirmEmail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	token := r.URL.Query().Get("token")
+	if err := h.service.ConfirmEmail(r.Context(), token); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 type errorResponse struct {
@@ -185,6 +208,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, authdomain.ErrPasswordTooShort),
 		errors.Is(err, authdomain.ErrTokenInvalid),
 		errors.Is(err, authdomain.ErrTokenExpired),
+		errors.Is(err, authdomain.ErrConfirmationTokenInvalid),
+		errors.Is(err, authdomain.ErrConfirmationTokenExpired),
 		errors.Is(err, userdomain.ErrNameRequired),
 		errors.Is(err, userdomain.ErrEmailRequired),
 		errors.Is(err, userdomain.ErrEmailInvalid),

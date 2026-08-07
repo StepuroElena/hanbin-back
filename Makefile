@@ -52,9 +52,17 @@ migrate-up:
 	psql "$(DSN)" -f migrations/016_add_archive_field_to_movies.up.sql
 	psql "$(DSN)" -f migrations/017_expand_movie_watch_status.up.sql
 	psql "$(DSN)" -f migrations/018_add_country_to_movies.up.sql
+	psql "$(DSN)" -f migrations/019_add_category_to_movies.up.sql
+	psql "$(DSN)" -f migrations/020_create_movie_categories.up.sql
+	psql "$(DSN)" -f migrations/021_create_password_reset_tokens.up.sql
+	psql "$(DSN)" -f migrations/022_create_email_confirmation.up.sql
 
 ## migrate-down: откатить все миграции
 migrate-down:
+	psql "$(DSN)" -f migrations/022_create_email_confirmation.down.sql
+	psql "$(DSN)" -f migrations/021_create_password_reset_tokens.down.sql
+	psql "$(DSN)" -f migrations/020_create_movie_categories.down.sql
+	psql "$(DSN)" -f migrations/019_add_category_to_movies.down.sql
 	psql "$(DSN)" -f migrations/018_add_country_to_movies.down.sql
 	psql "$(DSN)" -f migrations/017_expand_movie_watch_status.down.sql
 	psql "$(DSN)" -f migrations/016_add_archive_field_to_movies.down.sql
