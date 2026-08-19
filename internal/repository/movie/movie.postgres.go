@@ -175,6 +175,68 @@ func (r *postgresRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// CountPlanned считает количество неархивированных фильмов в статусе "planned", опционально под жанр.
+func (r *postgresRepository) CountPlanned(ctx context.Context, profileID int64, genre string) (int, error) {
+	const q = `
+		SELECT COUNT(*) FROM movies
+		WHERE profile_id = $1 AND watch_status = 'planned' AND is_archived = false
+		  AND ($2 = '' OR genre = $2)`
+
+	var count int
+	if err := r.db.QueryRowContext(ctx, q, profileID, genre).Scan(&count); err != nil {
+		return 0, fmt.Errorf("movie repository.CountPlanned: %w", err)
+	}
+	return count, nil
+}
+
+// GetRandomPlanned возвращает один случайный неархивированный фильм в статусе "planned".
+func (r *postgresRepository) GetRandomPlanned(ctx context.Context, profileID int64, genre string, excludeID int64) (*domain.Movie, error) {
+	const q = `
+		SELECT id, profile_id, title, genre, country, category, release_year, watch_status, is_archived, created_at, updated_at
+		FROM movies
+		WHERE profile_id = $1 AND watch_status = 'planned' AND is_archived = false
+		  AND ($2 = '' OR genre = $2)
+		  AND ($3 <= 0 OR id <> $3)
+		ORDER BY random()
+		LIMIT 1`
+
+	m, err := scanMovie(r.db.QueryRowContext(ctx, q, profileID, genre, excludeID))
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, nil // пустой пул для этих фильтров — ожидаемый исход, не ошибка
+		}
+		return nil, fmt.Errorf("movie repository.GetRandomPlanned: %w", err)
+	}
+	return m, nil
+}
+
+// GetPlannedGenres возвращает жанры, реально присутствующие среди фильмов в статусе "planned".
+func (r *postgresRepository) GetPlannedGenres(ctx context.Context, profileID int64) ([]string, error) {
+	const q = `
+		SELECT DISTINCT genre FROM movies
+		WHERE profile_id = $1 AND watch_status = 'planned' AND is_archived = false AND genre <> ''
+		ORDER BY genre`
+
+	rows, err := r.db.QueryContext(ctx, q, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("movie repository.GetPlannedGenres: %w", err)
+	}
+	defer rows.Close()
+
+	result := []string{}
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, fmt.Errorf("movie repository.GetPlannedGenres scan: %w", err)
+		}
+		result = append(result, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("movie repository.GetPlannedGenres rows: %w", err)
+	}
+	return result, nil
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 type rowScanner interface {

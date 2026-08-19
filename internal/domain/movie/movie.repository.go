@@ -25,4 +25,18 @@ type Repository interface {
 
 	// Delete удаляет фильм из БД по ID.
 	Delete(ctx context.Context, id int64) error
+
+	// CountPlanned считает количество неархивированных фильмов в статусе "planned" у пользователя.
+	// genre пустой = без фильтра по жанру.
+	CountPlanned(ctx context.Context, profileID int64, genre string) (int, error)
+
+	// GetRandomPlanned возвращает один случайный неархивированный фильм в статусе "planned".
+	// genre пустой = без фильтра по жанру. excludeID > 0 исключает конкретный фильм
+	// из выборки (для "Ещё раз"). Возвращает nil без ошибки, если под фильтры ничего
+	// не подошло.
+	GetRandomPlanned(ctx context.Context, profileID int64, genre string, excludeID int64) (*Movie, error)
+
+	// GetPlannedGenres возвращает жанры, реально присутствующие среди фильмов
+	// в статусе "planned".
+	GetPlannedGenres(ctx context.Context, profileID int64) ([]string, error)
 }
