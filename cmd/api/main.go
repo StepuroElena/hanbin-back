@@ -13,6 +13,7 @@ import (
 	dramahandler         "github.com/hanbin/hanbin-back/internal/handler/drama"
 	moviehandler         "github.com/hanbin/hanbin-back/internal/handler/movie"
 	moviecategoryhandler "github.com/hanbin/hanbin-back/internal/handler/moviecategory"
+	randomhandler        "github.com/hanbin/hanbin-back/internal/handler/random"
 	scraperhandler       "github.com/hanbin/hanbin-back/internal/handler/scraper"
 	streamingsitehandler "github.com/hanbin/hanbin-back/internal/handler/streamingsite"
 	userhandler          "github.com/hanbin/hanbin-back/internal/handler/user"
@@ -29,6 +30,7 @@ import (
 	dramasvc         "github.com/hanbin/hanbin-back/internal/service/drama"
 	moviesvc         "github.com/hanbin/hanbin-back/internal/service/movie"
 	moviecategorysvc "github.com/hanbin/hanbin-back/internal/service/moviecategory"
+	randomsvc        "github.com/hanbin/hanbin-back/internal/service/random"
 	scrapersvc       "github.com/hanbin/hanbin-back/internal/service/scraper"
 	streamingsitesvc "github.com/hanbin/hanbin-back/internal/service/streamingsite"
 	usersvc          "github.com/hanbin/hanbin-back/internal/service/user"
@@ -66,6 +68,7 @@ func main() {
 	authService  := authsvc.NewService(userRepo, resetTokenRepo, confirmationTokenRepo, mailer.NewFromEnv(), origins)
 	scrapeService        := scrapersvc.NewService(scrapeCacheRepo) // гибрид: cache-aside с TTL поверх internal/scraper
 	streamingSiteService := streamingsitesvc.NewService(streamingSiteRepo)
+	randomService        := randomsvc.NewService(dramaRepo, movieRepo) // составляет dramaRepo+movieRepo напрямую, без своего хранилища
 	userHandler          := userhandler.NewHandler(userService, dramaService)
 	dramaHandler         := dramahandler.NewHandler(dramaService)
 	movieHandler         := moviehandler.NewHandler(movieService)
@@ -73,6 +76,7 @@ func main() {
 	authHandler          := authhandler.NewHandler(authService)
 	scrapeHandler        := scraperhandler.NewHandler(scrapeService)
 	streamingSiteHandler := streamingsitehandler.NewHandler(streamingSiteService)
+	randomHandler        := randomhandler.NewHandler(randomService)
 
 	// ── Routing ───────────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
@@ -87,6 +91,7 @@ func main() {
 	scrapeHandler.RegisterRoutes(mux) // GET  /api/v1/dramas/scrape  (публичный, без JWT)
 	dramaHandler.RegisterRoutes(mux)  // POST /api/v1/dramas, PATCH /api/v1/dramas/{id}/archive
 	movieHandler.RegisterRoutes(mux)  // GET|POST /api/v1/movies
+	randomHandler.RegisterRoutes(mux) // GET /api/v1/random/facets, GET /api/v1/random/pick
 
 	httpHandler := middleware.CORS(origins)(mux)
 
@@ -109,6 +114,8 @@ func main() {
 	log.Println("  GET|POST /api/v1/movies")
 	log.Println("  GET /api/v1/movies/stats")
 	log.Println("  PATCH /api/v1/movies/{id}")
+	log.Println("  GET /api/v1/random/facets")
+	log.Println("  GET /api/v1/random/pick")
 	log.Printf("allowed origins: %v", origins)
 
 	if err := http.ListenAndServe(addr, httpHandler); err != nil {

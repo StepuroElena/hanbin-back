@@ -303,6 +303,64 @@ func (r *postgresRepository) queryDistinctStrings(ctx context.Context, query str
 	return result, rows.Err()
 }
 
+// CountPlanned считает количество неархивированных дорам в статусе "planned", опционально под жанр.
+// Используется фичей рандома для взвешенного выбора между дорамами и фильмами.
+func (r *postgresRepository) CountPlanned(ctx context.Context, profileID int64, genre string) (int, error) {
+	const q = `
+		SELECT COUNT(*) FROM dramas
+		WHERE profile_id = $1 AND watch_status = 'planned' AND is_archived = false
+		  AND ($2 = '' OR genre = $2)`
+
+	var count int
+	if err := r.db.QueryRowContext(ctx, q, profileID, genre).Scan(&count); err != nil {
+		return 0, fmt.Errorf("drama repository.CountPlanned: %w", err)
+	}
+	return count, nil
+}
+
+// GetRandomPlanned возвращает одну случайную неархивированную дораму в статусе "planned".
+// ORDER BY random() достаточно быстрый для размера личной библиотеки (сотни-тысячи строк
+// на профиль) — не требует отдельного индекса или выгрузки всей таблицы в приложение.
+func (r *postgresRepository) GetRandomPlanned(ctx context.Context, profileID int64, genre string, excludeID int64) (*domain.Drama, error) {
+	const q = `
+		SELECT id, profile_id, title, watch_url, source_url, release_year,
+		       release_tag, translation_tag, genre, rating,
+		       watch_status, country,
+		       is_archived, episode_duration_min, voiceover, poster_url, seasons, progress,
+		       created_at, updated_at
+		FROM dramas
+		WHERE profile_id = $1 AND watch_status = 'planned' AND is_archived = false
+		  AND ($2 = '' OR genre = $2)
+		  AND ($3 <= 0 OR id <> $3)
+		ORDER BY random()
+		LIMIT 1`
+
+	d, err := scanDrama(r.db.QueryRowContext(ctx, q, profileID, genre, excludeID))
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, nil // пустой пул для этих фильтров — ожидаемый исход, не ошибка
+		}
+		return nil, fmt.Errorf("drama repository.GetRandomPlanned: %w", err)
+	}
+	return d, nil
+}
+
+// GetPlannedGenres возвращает жанры, реально присутствующие среди дорам в статусе "planned" —
+// для чипов жанра в Random Picker (отличается от GetFacetsByProfileID, который считает
+// по всем неархивированным дорамам, а не только по запланированным).
+func (r *postgresRepository) GetPlannedGenres(ctx context.Context, profileID int64) ([]string, error) {
+	const q = `
+		SELECT DISTINCT genre FROM dramas
+		WHERE profile_id = $1 AND watch_status = 'planned' AND is_archived = false AND genre <> ''
+		ORDER BY genre`
+
+	genres, err := r.queryDistinctStrings(ctx, q, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("drama repository.GetPlannedGenres: %w", err)
+	}
+	return genres, nil
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────────────────
 
 type rowScanner interface {
