@@ -13,6 +13,7 @@ import (
 	dramahandler         "github.com/hanbin/hanbin-back/internal/handler/drama"
 	moviehandler         "github.com/hanbin/hanbin-back/internal/handler/movie"
 	moviecategoryhandler "github.com/hanbin/hanbin-back/internal/handler/moviecategory"
+	publichandler        "github.com/hanbin/hanbin-back/internal/handler/public"
 	randomhandler        "github.com/hanbin/hanbin-back/internal/handler/random"
 	scraperhandler       "github.com/hanbin/hanbin-back/internal/handler/scraper"
 	streamingsitehandler "github.com/hanbin/hanbin-back/internal/handler/streamingsite"
@@ -77,6 +78,7 @@ func main() {
 	scrapeHandler        := scraperhandler.NewHandler(scrapeService)
 	streamingSiteHandler := streamingsitehandler.NewHandler(streamingSiteService)
 	randomHandler        := randomhandler.NewHandler(randomService)
+	publicHandler        := publichandler.NewHandler(movieService, userService) // без JWT — читать чужой список фильмов для шаринга
 
 	// ── Routing ───────────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
@@ -92,6 +94,7 @@ func main() {
 	dramaHandler.RegisterRoutes(mux)  // POST /api/v1/dramas, PATCH /api/v1/dramas/{id}/archive
 	movieHandler.RegisterRoutes(mux)  // GET|POST /api/v1/movies
 	randomHandler.RegisterRoutes(mux) // GET /api/v1/random/facets, GET /api/v1/random/pick
+	publicHandler.RegisterRoutes(mux) // GET /api/v1/public/profiles/{id}/movies (публичный, без JWT — шаринг списка)
 
 	httpHandler := middleware.CORS(origins)(mux)
 
@@ -116,6 +119,7 @@ func main() {
 	log.Println("  PATCH /api/v1/movies/{id}")
 	log.Println("  GET /api/v1/random/facets")
 	log.Println("  GET /api/v1/random/pick")
+	log.Println("  GET /api/v1/public/profiles/{id}/movies")
 	log.Printf("allowed origins: %v", origins)
 
 	if err := http.ListenAndServe(addr, httpHandler); err != nil {
