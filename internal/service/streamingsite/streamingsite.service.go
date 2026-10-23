@@ -111,6 +111,9 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 	if err != nil {
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
+	if err := s.ensureUnique(ctx, site); err != nil {
+		return nil, fmt.Errorf("service.Create: %w", err)
+	}
 
 	id, err := s.repo.Create(ctx, site)
 	if err != nil {
@@ -138,6 +141,11 @@ func (s *Service) Update(ctx context.Context, profileID, siteID int64, in Update
 	}
 	if in.URL != nil {
 		if err := site.SetURL(*in.URL); err != nil {
+			return nil, fmt.Errorf("service.Update: %w", err)
+		}
+	}
+	if in.Name != nil || in.URL != nil {
+		if err := s.ensureUnique(ctx, site); err != nil {
 			return nil, fmt.Errorf("service.Update: %w", err)
 		}
 	}
@@ -181,6 +189,28 @@ func (s *Service) Delete(ctx context.Context, profileID, siteID int64) error {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// ensureUnique проверяет, что у профиля нет другого сайта с таким же названием
+// (без учёта регистра) или такой же ссылкой (без учёта схемы, www и завершающего «/»).
+func (s *Service) ensureUnique(ctx context.Context, site *domain.StreamingSite) error {
+	existing, err := s.repo.GetAllByProfileID(ctx, site.ProfileID())
+	if err != nil {
+		return err
+	}
+	nameKey, urlKey := domain.NameKey(site.Name()), domain.URLKey(site.URL())
+	for _, other := range existing {
+		if other.ID() == site.ID() {
+			continue
+		}
+		if domain.NameKey(other.Name()) == nameKey {
+			return domain.ErrDuplicateName
+		}
+		if domain.URLKey(other.URL()) == urlKey {
+			return domain.ErrDuplicateURL
+		}
+	}
+	return nil
+}
 
 func (s *Service) seedDefaults(ctx context.Context, profileID int64) error {
 	for i, d := range defaultSites {

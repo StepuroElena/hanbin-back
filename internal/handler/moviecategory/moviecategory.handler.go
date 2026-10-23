@@ -183,6 +183,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "movie category not found")
+	case errors.Is(err, domain.ErrDuplicateName):
+		writeError(w, http.StatusConflict, domain.ErrDuplicateName.Error())
 	case errors.Is(err, domain.ErrNameRequired),
 		errors.Is(err, domain.ErrNameTooLong),
 		errors.Is(err, domain.ErrProfileIDRequired):

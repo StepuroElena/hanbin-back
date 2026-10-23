@@ -29,7 +29,24 @@ var (
 	ErrURLTooLong        = errors.New("url must be 500 characters or fewer")
 	ErrInvalidLanguage   = errors.New("language must be one of: ru, en, multi")
 	ErrNotFound          = errors.New("streaming site not found")
+	ErrDuplicateName     = errors.New("streaming site with this name already exists")
+	ErrDuplicateURL      = errors.New("streaming site with this url already exists")
 )
+
+// NameKey — форма названия для проверки дублей: без учёта регистра и лишних пробелов.
+func NameKey(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
+}
+
+// URLKey — форма ссылки для проверки дублей: без схемы, «www.», завершающего «/» и регистра.
+// "https://www.Netflix.com/" и "netflix.com" — один и тот же сайт.
+func URLKey(url string) string {
+	u := strings.ToLower(strings.TrimSpace(url))
+	for _, prefix := range []string{"https://", "http://", "www."} {
+		u = strings.TrimPrefix(u, prefix)
+	}
+	return strings.TrimRight(u, "/")
+}
 
 // StreamingSite — сайт для просмотра дорам, принадлежащий конкретному профилю.
 type StreamingSite struct {
