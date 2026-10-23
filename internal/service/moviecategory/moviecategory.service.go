@@ -91,6 +91,9 @@ func (s *Service) Create(ctx context.Context, profileID int64, in CreateInput) (
 	if err != nil {
 		return nil, fmt.Errorf("service.Create: %w", err)
 	}
+	if err := s.ensureUniqueName(ctx, category); err != nil {
+		return nil, fmt.Errorf("service.Create: %w", err)
+	}
 
 	id, err := s.repo.Create(ctx, category)
 	if err != nil {
@@ -113,6 +116,9 @@ func (s *Service) Update(ctx context.Context, profileID, categoryID int64, in Up
 
 	if in.Name != nil {
 		if err := category.SetName(*in.Name); err != nil {
+			return nil, fmt.Errorf("service.Update: %w", err)
+		}
+		if err := s.ensureUniqueName(ctx, category); err != nil {
 			return nil, fmt.Errorf("service.Update: %w", err)
 		}
 	}
@@ -147,6 +153,21 @@ func (s *Service) Delete(ctx context.Context, profileID, categoryID int64) error
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// ensureUniqueName проверяет, что у профиля нет другой категории с таким же названием (без учёта регистра).
+func (s *Service) ensureUniqueName(ctx context.Context, category *domain.MovieCategory) error {
+	existing, err := s.repo.GetAllByProfileID(ctx, category.ProfileID())
+	if err != nil {
+		return err
+	}
+	key := domain.NameKey(category.Name())
+	for _, other := range existing {
+		if other.ID() != category.ID() && domain.NameKey(other.Name()) == key {
+			return domain.ErrDuplicateName
+		}
+	}
+	return nil
+}
 
 func (s *Service) seedDefaults(ctx context.Context, profileID int64) error {
 	for i, name := range defaultCategories {

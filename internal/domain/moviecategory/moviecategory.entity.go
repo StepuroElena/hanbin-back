@@ -14,7 +14,13 @@ var (
 	ErrNameRequired      = errors.New("name is required")
 	ErrNameTooLong       = errors.New("name must be 100 characters or fewer")
 	ErrNotFound          = errors.New("movie category not found")
+	ErrDuplicateName     = errors.New("movie category with this name already exists")
 )
+
+// NameKey — форма названия для проверки дублей: без учёта регистра и лишних пробелов.
+func NameKey(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
+}
 
 // MovieCategory — короткая персональная категория/тег фильма (напр. «Для вечера»,
 // «Атмосферное»), принадлежащая конкретному профилю. Аналог streamingsite.StreamingSite,

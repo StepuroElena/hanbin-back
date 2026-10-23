@@ -18,6 +18,7 @@ import (
 	scraperhandler       "github.com/hanbin/hanbin-back/internal/handler/scraper"
 	streamingsitehandler "github.com/hanbin/hanbin-back/internal/handler/streamingsite"
 	userhandler          "github.com/hanbin/hanbin-back/internal/handler/user"
+	voiceoverhandler     "github.com/hanbin/hanbin-back/internal/handler/voiceover"
 	"github.com/hanbin/hanbin-back/internal/mailer"
 	"github.com/hanbin/hanbin-back/internal/middleware"
 	authrepo          "github.com/hanbin/hanbin-back/internal/repository/auth"
@@ -27,6 +28,7 @@ import (
 	scrapecacherepo   "github.com/hanbin/hanbin-back/internal/repository/scrapecache"
 	streamingsiterepo "github.com/hanbin/hanbin-back/internal/repository/streamingsite"
 	userrepo          "github.com/hanbin/hanbin-back/internal/repository/user"
+	voiceoverrepo     "github.com/hanbin/hanbin-back/internal/repository/voiceover"
 	authsvc          "github.com/hanbin/hanbin-back/internal/service/auth"
 	dramasvc         "github.com/hanbin/hanbin-back/internal/service/drama"
 	moviesvc         "github.com/hanbin/hanbin-back/internal/service/movie"
@@ -35,6 +37,7 @@ import (
 	scrapersvc       "github.com/hanbin/hanbin-back/internal/service/scraper"
 	streamingsitesvc "github.com/hanbin/hanbin-back/internal/service/streamingsite"
 	usersvc          "github.com/hanbin/hanbin-back/internal/service/user"
+	voiceoversvc     "github.com/hanbin/hanbin-back/internal/service/voiceover"
 )
 
 func main() {
@@ -62,6 +65,7 @@ func main() {
 	movieCategoryRepo := moviecategoryrepo.NewPostgresRepository(db)
 	scrapeCacheRepo   := scrapecacherepo.NewPostgresRepository(db)
 	streamingSiteRepo := streamingsiterepo.NewPostgresRepository(db)
+	voiceoverRepo     := voiceoverrepo.NewPostgresRepository(db)
 	userService  := usersvc.NewService(userRepo)
 	dramaService := dramasvc.NewService(dramaRepo)
 	movieService := moviesvc.NewService(movieRepo)
@@ -69,6 +73,7 @@ func main() {
 	authService  := authsvc.NewService(userRepo, resetTokenRepo, confirmationTokenRepo, mailer.NewFromEnv(), origins)
 	scrapeService        := scrapersvc.NewService(scrapeCacheRepo) // гибрид: cache-aside с TTL поверх internal/scraper
 	streamingSiteService := streamingsitesvc.NewService(streamingSiteRepo)
+	voiceoverService     := voiceoversvc.NewService(voiceoverRepo)
 	randomService        := randomsvc.NewService(dramaRepo, movieRepo) // составляет dramaRepo+movieRepo напрямую, без своего хранилища
 	userHandler          := userhandler.NewHandler(userService, dramaService)
 	dramaHandler         := dramahandler.NewHandler(dramaService)
@@ -77,6 +82,7 @@ func main() {
 	authHandler          := authhandler.NewHandler(authService)
 	scrapeHandler        := scraperhandler.NewHandler(scrapeService)
 	streamingSiteHandler := streamingsitehandler.NewHandler(streamingSiteService)
+	voiceoverHandler     := voiceoverhandler.NewHandler(voiceoverService)
 	randomHandler        := randomhandler.NewHandler(randomService)
 	publicHandler        := publichandler.NewHandler(movieService, userService) // без JWT — читать чужой список фильмов для шаринга
 
@@ -86,6 +92,7 @@ func main() {
 	userHandler.RegisterRoutes(mux)          // GET  /api/v1/users/me, /api/v1/profiles/...
 	streamingSiteHandler.RegisterRoutes(mux) // GET|POST /api/v1/streaming-sites, PATCH|DELETE /api/v1/streaming-sites/{id}
 	movieCategoryHandler.RegisterRoutes(mux) // GET|POST /api/v1/movie-categories, PATCH|DELETE /api/v1/movie-categories/{id}
+	voiceoverHandler.RegisterRoutes(mux)     // GET|POST /api/v1/voiceovers, PATCH|DELETE /api/v1/voiceovers/{id}, GET /match, GET /defaults (публичный)
 
 	// ВАЖНО: scrapeHandler регистрируется ДО dramaHandler.
 	// Паттерн "GET /api/v1/dramas/scrape" точнее, чем "/api/v1/dramas/",
@@ -114,6 +121,10 @@ func main() {
 	log.Println("  PATCH|DELETE /api/v1/streaming-sites/{id}")
 	log.Println("  GET|POST /api/v1/movie-categories")
 	log.Println("  PATCH|DELETE /api/v1/movie-categories/{id}")
+	log.Println("  GET|POST /api/v1/voiceovers")
+	log.Println("  PATCH|DELETE /api/v1/voiceovers/{id}")
+	log.Println("  GET /api/v1/voiceovers/match")
+	log.Println("  GET /api/v1/voiceovers/defaults")
 	log.Println("  GET|POST /api/v1/movies")
 	log.Println("  GET /api/v1/movies/stats")
 	log.Println("  PATCH /api/v1/movies/{id}")

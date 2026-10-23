@@ -56,9 +56,11 @@ migrate-up:
 	psql "$(DSN)" -f migrations/020_create_movie_categories.up.sql
 	psql "$(DSN)" -f migrations/021_create_password_reset_tokens.up.sql
 	psql "$(DSN)" -f migrations/022_create_email_confirmation.up.sql
+	psql "$(DSN)" -f migrations/023_create_voiceovers.up.sql
 
 ## migrate-down: откатить все миграции
 migrate-down:
+	psql "$(DSN)" -f migrations/023_create_voiceovers.down.sql
 	psql "$(DSN)" -f migrations/022_create_email_confirmation.down.sql
 	psql "$(DSN)" -f migrations/021_create_password_reset_tokens.down.sql
 	psql "$(DSN)" -f migrations/020_create_movie_categories.down.sql

@@ -49,6 +49,21 @@ func Auth(next http.Handler) http.Handler {
 	})
 }
 
+// OptionalAuth — как Auth, но не требует токен: с валидным Bearer кладёт profile_id в контекст,
+// без токена (или с невалидным) пропускает запрос дальше как гостевой. Для эндпоинтов,
+// которые работают и для гостя, и для пользователя (напр. GET /api/v1/voiceovers/match).
+func OptionalAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			if userID, err := ParseJWT(strings.TrimPrefix(authHeader, "Bearer "), jwtSecret()); err == nil {
+				r = r.WithContext(context.WithValue(r.Context(), UserIDKey, userID))
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // UserIDFromContext извлекает profile_id из контекста запроса.
 func UserIDFromContext(ctx context.Context) (int64, bool) {
 	v, ok := ctx.Value(UserIDKey).(int64)
